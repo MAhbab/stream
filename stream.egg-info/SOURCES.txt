@@ -1,0 +1,9 @@
+project.toml
+setup.py
+stream/__init__.py
+stream/core.py
+stream.egg-info/PKG-INFO
+stream.egg-info/SOURCES.txt
+stream.egg-info/dependency_links.txt
+stream.egg-info/requires.txt
+stream.egg-info/top_level.txt
