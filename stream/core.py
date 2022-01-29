@@ -1,15 +1,16 @@
 from typing import List
+import pandas as pd
 import streamlit as st
-import pickle
 from collections import defaultdict
 
 class State:
 
-    def setup(starting_page=None, refresh=False):
+    def setup(refresh=False):
 
         if ('globals' not in st.session_state) or (refresh):
-            st.session_state.globals = State.clear_globals(starting_page)
-        if('locals' not in st.session_state) or (refresh):
+            st.session_state.globals = State.reset_globals()
+        
+        if ('locals' not in st.session_state) or (refresh):
             st.session_state.locals = defaultdict(dict)
 
     def selections():
@@ -24,6 +25,9 @@ class State:
     def locals():
         return st.session_state.locals
 
+    def is_first_run():
+        return st.session_state.globals['is_first_run']
+
     def update_current_page(page):
         st.session_state.globals['current_page'] = page
 
@@ -34,17 +38,18 @@ class State:
     def clear_locals(group_name):
         st.session_state.locals[group_name].clear()
 
-    def update_global_variables(**vals):
+    def update_global_variables(base_key=None, **vals):
         for key in vals:
             obj = vals[key]
-            obj_type = obj.__class__.__name__
-            st.session_state.globals['variables'][obj_type][key] = obj
+            base_key = base_key or obj.__class__.__name__
+            st.session_state.globals['variables'][base_key][key] = obj
 
-    def clear_globals(starting_page=None):
+    def reset_globals():
         globals_dict = {
-            'current_page':starting_page or State.target_page,
+            'current_page':None,
             'selections': defaultdict(list),
             'variables': defaultdict(dict),
+            'is_first_run': True
         }
         return globals_dict
 
@@ -97,7 +102,7 @@ class State:
 
             st.button(
                 label='Delete All Variables',
-                on_click=State.clear_globals
+                on_click=State.reset_globals
             )
 
     def target_page_sidebar():
@@ -126,15 +131,15 @@ class State:
 
             st.sidebar.button(
                 label='Delete All Variables',
-                on_click=State.clear_globals
+                on_click=State.reset_globals
             )
-
-        
+      
 class Page:
 
-    def __init__(self, name=None, group_name=None) -> None:
+    def __init__(self, name=None, group_name=None, is_setup_page=False) -> None:
         self._name = name or self.__class__.__name__
         self._group_name = group_name or 'DefaultGroup'
+        self._is_setup_page = is_setup_page
 
     @property
     def name(self):
@@ -152,8 +157,8 @@ class Page:
     def selections(self):
         return State.selections()
     
-    def update_global_variables(self, **vars):
-        State.update_global_variables(**vars)
+    def update_global_variables(self,base_key=None, **vars):
+        State.update_global_variables(base_key, **vars)
 
     def update_local_variables(self, **vars):
         State.update_local_variables(self.group, **vars)
@@ -164,28 +169,68 @@ class Page:
 
 class App:
 
-    def __init__(self, pages: List[Page], **global_vars) -> None:
+    def __init__(self, pages: List[Page], setup_on_every_run=False, display_local_variables=False, **global_vars) -> None:
         self._global_vars = global_vars
+        self._pages = pages
         self._page_groups = defaultdict(dict)
+        self._setup_on_every_run = setup_on_every_run
+        self._display_local_variables = display_local_variables
+
+        self._page_groups['Main Menu']['Selections'] = State.target_page
+
         for p in pages:
             self._page_groups[p.group][p.name] = p
 
     def sidebar_options(self):
         page_group_selection = st.sidebar.radio('Select Page Group', self._page_groups.keys())
         page_options = self._page_groups[page_group_selection]
-        page_name = st.sidebar.radio('Select Page', page_options.keys())
+        display_page_choices = [p for p in page_options if not page_options[p]._is_setup_page]
+        page_name = st.sidebar.radio('Select Page', display_page_choices)
         page_selection = page_options[page_name]
         State.update_current_page(page_selection)
+
+    def display_local_vars(self, page):
+        with st.expander('Local Variables'):
+            local_vars = page.locals
+            for var_name in local_vars:
+                st.subheader(var_name)
+                var = local_vars[var_name]
+                if isinstance(var, (pd.Series, pd.DataFrame)):
+                    st.dataframe(var)
+                else:
+                    st.write(var)
+
+    def setup(self):
+        with st.spinner('Running setup pages..'):
+            for p in self._pages:
+                if p._is_setup_page:
+                    st.write("Setting up Page '{}' in Group '{}'...".format(p.name, p.group))
+                    p()
+                    st.success("Setup Page '{}' in Group '{}'!".format(p.name, p.group))
     
     def run(self):
-        #initialize session state
+
+        #initialize session state (first run only)
         State.setup()
+
+        if State.is_first_run() or self._setup_on_every_run:
+            st.session_state.globals['is_first_run'] = False
+            self.setup()
+
 
         #page selection options
         self.sidebar_options()
-        State.target_page_sidebar()
+
+        current_page = State.current_page()
+
+        if isinstance(current_page, Page):
+            st.title('{}::{}'.format(current_page.group, current_page.name))
+
+        #display local variables
+        if self._display_local_variables:
+            self.display_local_vars(current_page)
 
         #either display selected page or inputs
-        State.current_page()()
+        current_page()
 
 
