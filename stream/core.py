@@ -73,66 +73,6 @@ class State:
         else:
             st.session_state.globals['selections'][dtype_key].clear()
 
-    def target_page():
-
-        st.header('Selections')
-
-        with st.expander('Current Selections', True):
-            st.write(State.selections)
-
-
-        for key in State.variables():
-            choices = State.variables()[key]
-            widg_key = 'stream_selection_{}'.format(key)
-
-            new_target_keys = st.multiselect(
-                label='Selection: {}'.format(key), 
-                options=choices.keys(), 
-                default=State.selections()[key],
-                key=widg_key,
-                on_change=State.update_selection,
-                kwargs={'dtype': key},
-                args=(x for x in st.session_state[widg_key])
-            )
-
-            st.button(
-                label='Clear All Selections',
-                on_click=State.clear_selection
-            )
-
-            st.button(
-                label='Delete All Variables',
-                on_click=State.reset_globals
-            )
-
-    def target_page_sidebar():
-
-        st.subheader('Selections')
-
-        with st.expander('target_page_sidebar'):
-            for key in State.variables():
-                choices = State.variables()[key]
-                widg_key = 'stream_selection_{}'.format(key)
-
-                new_target_keys = st.sidebar.multiselect(
-                    label='Selection: {}'.format(key), 
-                    options=choices.keys(), 
-                    default=State.selections()[key],
-                    key=widg_key,
-                    on_change=State.update_selection,
-                    kwargs={'dtype': key},
-                    args=(x for x in st.session_state[widg_key])
-                )
-
-            st.sidebar.button(
-                label='Clear All Selections',
-                on_click=State.clear_selection
-            )
-
-            st.sidebar.button(
-                label='Delete All Variables',
-                on_click=State.reset_globals
-            )
       
 class Page:
 
@@ -157,7 +97,7 @@ class Page:
     def selections(self):
         return State.selections()
     
-    def update_global_variables(self,base_key=None, **vars):
+    def update_global_variables(self, base_key=None, **vars):
         State.update_global_variables(base_key, **vars)
 
     def update_local_variables(self, **vars):
@@ -175,8 +115,6 @@ class App:
         self._page_groups = defaultdict(dict)
         self._setup_on_every_run = setup_on_every_run
         self._display_local_variables = display_local_variables
-
-        self._page_groups['Main Menu']['Selections'] = State.target_page
 
         for p in pages:
             self._page_groups[p.group][p.name] = p
@@ -232,5 +170,65 @@ class App:
 
         #either display selected page or inputs
         current_page()
+
+class Selection(Page):
+
+    def __call__():
+
+        with st.expander('Current Selections', True):
+            st.write(State.selections)
+
+
+        for key in State.variables():
+            choices = State.variables()[key]
+            widg_key = 'stream_selection_{}'.format(key)
+
+            st.multiselect(
+                label='Selection: {}'.format(key), 
+                options=choices.keys(), 
+                default=State.selections()[key],
+                key=widg_key,
+                on_change=State.update_selection,
+                kwargs={'dtype': key},
+                args=(x for x in st.session_state[widg_key])
+            )
+
+            st.button(
+                label='Clear All Selections',
+                on_click=State.clear_selection
+            )
+
+            st.button(
+                label='Delete All Variables',
+                on_click=State.reset_globals
+            )
+
+class PandasViewer(Page):
+
+    def __init__(
+        self,
+        target_variable=None,
+        name=None,
+        table=True,
+        group_name=None,
+        description=True,
+
+    ) -> None:
+        super().__init__(name, group_name)   
+        self._target_variable = target_variable
+
+    def __call__(self, dataframe=None):
+        if dataframe is None:
+            if self._target_variable is None:
+                options = self.selections[pd.DataFrame.__name__]
+                df_name = st.selectbox('DataFrames', options.keys())
+                dataframe = options[df_name]
+            else:
+                dataframe = self.locals[self._target_variable]
+        
+
+
+
+
 
 
