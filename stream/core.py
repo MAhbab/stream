@@ -21,12 +21,6 @@ class State:
         if ('locals' not in st.session_state) or (refresh):
             st.session_state.locals = defaultdict(dict)
 
-    def selections():
-        return st.session_state.globals['selections']
-
-    def variables():
-        return st.session_state.globals['variables']
-
     def current_page():
         return st.session_state.globals['current_page']
 
@@ -42,47 +36,22 @@ class State:
     def update_current_page(page):
         st.session_state.globals['current_page'] = page
 
-    def update_local_variables(group_name, **new_vals):
-        for key in new_vals:
-            st.session_state.locals[group_name][key] = new_vals[key]
+    def update_locals(group_name, **new_vals):
+            st.session_state.locals[group_name].update(new_vals)
 
     def clear_locals(group_name):
         st.session_state.locals[group_name].clear()
 
-    def update_global_variables(base_key, *vals):
-        st.session_state.globals['variables'][base_key].extend(vals)
+    def update_globals(**kwargs):
+        st.session_state.globals['variables'].update(kwargs)
 
     def reset_globals():
         globals_dict = {
             'current_page':None,
-            'selections': defaultdict(list),
-            'variables': defaultdict(lambda: defaultdict(list)),
+            'variables': {},
             'is_first_run': True
         }
         return globals_dict
-
-    def get_selection(dtype_key):
-        raise NotImplementedError('need to redisign')
-        vars = State.variables[dtype_key]
-        keys = State.selections[dtype_key]
-        if len(keys)==1:
-            obj = vars[keys[0]]
-        else:
-            obj = [vars[k] for k in keys]
-        
-        return obj
-
-    def update_selection(dtype_key, keys: list):
-        raise NotImplementedError('need to redisign')
-        st.session_state.globals['selections'][dtype_key] = keys
-
-    def clear_selection(dtype_key=None):
-        raise NotImplementedError('need to redisign')
-        if dtype_key is None:
-            st.session_state.globals['selections'].clear()
-        
-        else:
-            st.session_state.globals['selections'][dtype_key].clear()
 
 class Page:
 
@@ -109,34 +78,16 @@ class Page:
     def globals(self):
         return State.globals()
 
-    @property
-    def selections(self):
-        raise NotImplementedError('need to revisit selection feature')
-        return State.selections()
-    
     def update_global_variables(self, *vars):
         if vars:
             base_key = vars[0].__class__.__name__
-            State.update_global_variables(base_key, *vars)
+            State.update_globals(base_key, *vars)
 
-    def update_globals_by_key(self, key, *vars):
-        State.update_global_variables(key, *vars)
+    def update_globals_by_key(self, **kwargs):
+        State.update_globals(**kwargs)
 
     def update_local_variables(self, **vars):
-        State.update_local_variables(self.group, **vars)
-
-    def save_selection_as_local_variable(self, key, choices, select_type='single'):
-        raise NotImplementedError('need to redesign selection feature')
-        label = 'Select {}'.format(key)
-        if select_type=='single':
-            selection = st.selectbox(label, choices)
-            var = choices[selection]
-            self.update_local_variables(key=var)
-        elif select_type=='multi':
-            selections = st.multiselect(label)
-            vars = [choices[x] for x in selections]
-            self.update_local_variables(key=vars)
-
+        State.update_locals(self.group, **vars)
 
     def __call__(self):
         raise NotImplementedError()
