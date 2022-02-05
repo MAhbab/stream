@@ -79,10 +79,12 @@ class State:
 
 class Page:
 
-    def __init__(self, name=None, group_name=None, is_setup_page=False) -> None:
+    def __init__(self, name=None, group_name=None, is_setup_page=False, generate_title=True) -> None:
         self._name = name or self.__class__.__name__
         self._group_name = group_name or 'Default Group'
         self._is_setup_page = is_setup_page
+
+        self.generate_title = generate_title
 
     @property
     def name(self):
@@ -321,7 +323,7 @@ class App:
 
         current_page = State.current_page()
 
-        if isinstance(current_page, Page):
+        if isinstance(current_page, Page) and (current_page.generate_title):
             st.title('{}::{}'.format(current_page.group, current_page.name))
 
         #display local variables
