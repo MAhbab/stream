@@ -2,10 +2,14 @@ from typing import List
 import pandas as pd
 import streamlit as st
 from collections import defaultdict
-from .plotting import HEIGHT, WIDTH, TOOLBAR_LOC, SIZING_MODE
 import bokeh.models as bkm
 import bokeh.plotting as bkp
 import numpy as np
+
+HEIGHT = 400
+WIDTH = 600
+TOOLBAR_LOC = 'below'
+SIZING_MODE = 'stretch_both'
 
 class State:
 
@@ -29,6 +33,9 @@ class State:
     def locals():
         return st.session_state.locals
 
+    def globals():
+        return st.session_state.globals['variables']
+
     def is_first_run():
         return st.session_state.globals['is_first_run']
 
@@ -42,22 +49,20 @@ class State:
     def clear_locals(group_name):
         st.session_state.locals[group_name].clear()
 
-    def update_global_variables(base_key=None, **vals):
-        for key in vals:
-            obj = vals[key]
-            base_key = base_key or obj.__class__.__name__
-            st.session_state.globals['variables'][base_key][key] = obj
+    def update_global_variables(base_key, *vals):
+        st.session_state.globals['variables'][base_key].extend(vals)
 
     def reset_globals():
         globals_dict = {
             'current_page':None,
             'selections': defaultdict(list),
-            'variables': defaultdict(dict),
+            'variables': defaultdict(lambda: defaultdict(list)),
             'is_first_run': True
         }
         return globals_dict
 
     def get_selection(dtype_key):
+        raise NotImplementedError('need to redisign')
         vars = State.variables[dtype_key]
         keys = State.selections[dtype_key]
         if len(keys)==1:
@@ -67,10 +72,12 @@ class State:
         
         return obj
 
-    def update_selection(dtype_key, *keys):
-        st.session_state.globals['selections'][dtype_key] = list(keys)
+    def update_selection(dtype_key, keys: list):
+        raise NotImplementedError('need to redisign')
+        st.session_state.globals['selections'][dtype_key] = keys
 
     def clear_selection(dtype_key=None):
+        raise NotImplementedError('need to redisign')
         if dtype_key is None:
             st.session_state.globals['selections'].clear()
         
@@ -97,62 +104,40 @@ class Page:
         return State.locals()[self.group]
 
     @property
+    def globals(self):
+        return State.globals()
+
+    @property
     def selections(self):
+        raise NotImplementedError('need to revisit selection feature')
         return State.selections()
     
-    def update_global_variables(self, base_key=None, **vars):
-        State.update_global_variables(base_key, **vars)
+    def update_global_variables(self, *vars):
+        if vars:
+            base_key = vars[0].__class__.__name__
+            State.update_global_variables(base_key, *vars)
+
+    def update_globals_by_key(self, key, *vars):
+        State.update_global_variables(key, *vars)
 
     def update_local_variables(self, **vars):
         State.update_local_variables(self.group, **vars)
 
+    def save_selection_as_local_variable(self, key, choices, select_type='single'):
+        raise NotImplementedError('need to redesign selection feature')
+        label = 'Select {}'.format(key)
+        if select_type=='single':
+            selection = st.selectbox(label, choices)
+            var = choices[selection]
+            self.update_local_variables(key=var)
+        elif select_type=='multi':
+            selections = st.multiselect(label)
+            vars = [choices[x] for x in selections]
+            self.update_local_variables(key=vars)
+
+
     def __call__(self):
         raise NotImplementedError()
-
-class Selection(Page):
-
-    '''
-    Page to select variables which can be accessed from calling
-    :func: State.variables <stream.core.State.variables>
-    '''
-
-    def __call__(self):
-
-        with st.expander('Current Selections'):
-            st.write(State.selections)
-
-        with st.expander('Local Variables'):
-            local_vars = State.locals()
-            for key in local_vars:
-                group_vars = local_vars[key]
-                if not group_vars:
-                    continue
-                st.subheader(key)
-                st.write(group_vars)
-
-        for key in State.variables():
-            choices = State.variables()[key]
-            widg_key = 'stream_selection_{}'.format(key)
-
-            st.multiselect(
-                label='Selection: {}'.format(key), 
-                options=choices.keys(), 
-                default=State.selections()[key],
-                key=widg_key,
-                on_change=State.update_selection,
-                kwargs={'dtype': key},
-                args=(x for x in st.session_state[widg_key])
-            )
-
-        st.button(
-            label='Clear All Selections',
-            on_click=State.clear_selection
-        )
-
-        st.button(
-            label='Delete All Variables',
-            on_click=State.reset_globals
-        )
 
 class PlottingPage(Page):
 
@@ -206,6 +191,7 @@ class PlottingPage(Page):
         return figure
 
     def _bquad(self, srs, bins):
+        '''Helper function to calculate bounds for hist plot'''
         bounds_dict = {}
         try:
             rbins = pd.cut(srs, np.linspace(srs.min(), srs.max(), bins))
@@ -263,8 +249,6 @@ class PlottingPage(Page):
 class App:
 
     def __init__(self, pages: List[Page], setup_on_every_run=False, display_local_variables=False, **global_vars) -> None:
-        if Selection.__name__ not in [p.__class__.__name__ for p in pages]:
-            pages.append(Selection(group_name='Main Menu'))
         self._global_vars = global_vars
         self._pages = pages
         self._page_groups = defaultdict(dict)
