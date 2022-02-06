@@ -1,10 +1,12 @@
 from typing import List
 import pandas as pd
+from soupsieve import select
 import streamlit as st
 from collections import defaultdict
 import bokeh.models as bkm
 import bokeh.plotting as bkp
 import numpy as np
+from treelib import Tree, Node
 
 HEIGHT = 400
 WIDTH = 600
@@ -13,84 +15,282 @@ SIZING_MODE = 'stretch_both'
 
 class State:
 
-    def setup(refresh=False):
-
-        if ('globals' not in st.session_state) or (refresh):
-            st.session_state.globals = State.reset_globals()
-        
-        if ('locals' not in st.session_state) or (refresh):
-            st.session_state.locals = defaultdict(dict)
-
-    def current_page():
-        return st.session_state.globals['current_page']
-
-    def locals():
-        return st.session_state.locals
-
-    def globals():
-        return st.session_state.globals['variables']
-
-    def is_first_run():
-        return st.session_state.globals['is_first_run']
-
-    def update_current_page(page):
-        st.session_state.globals['current_page'] = page
-
-    def update_locals(group_name, **new_vals):
-            st.session_state.locals[group_name].update(new_vals)
-
-    def clear_locals(group_name):
-        st.session_state.locals[group_name].clear()
-
-    def update_globals(**kwargs):
-        st.session_state.globals['variables'].update(kwargs)
-
-    def reset_globals():
-        globals_dict = {
-            'current_page':None,
-            'variables': {},
-            'is_first_run': True
-        }
-        return globals_dict
-
-class Page:
-
-    def __init__(self, name=None, group_name=None, is_setup_page=False, generate_title=True) -> None:
+    def __init__(self, name=None) -> None:
         self._name = name or self.__class__.__name__
-        self._group_name = group_name or 'Default Group'
-        self._is_setup_page = is_setup_page
 
-        self.generate_title = generate_title
-
-    @property
-    def name(self):
-        return self._name
+        if name in st.session_state:
+            self._state = st.session_state[name]
+        else:
+            self.setup()
 
     @property
-    def group(self):
-        return self._group_name
+    def state(self):
+        return st.session_state[self._name]
 
     @property
-    def locals(self):
-        return State.locals()[self.group]
+    def active_page(self) -> Node:
+        return self.state['active_page']
+
+    @property
+    def locals(self) -> Tree:
+        return self.state['locals']
 
     @property
     def globals(self):
-        return State.globals()
+        return self.state['globals']
 
-    def update_global_variables(self, *vars):
-        if vars:
-            base_key = vars[0].__class__.__name__
-            State.update_globals(base_key, *vars)
+    @property
+    def is_first_run(self):
+        return self.state['is_first_run']
 
-    def update_globals_by_key(self, **kwargs):
-        State.update_globals(**kwargs)
+    def update(self):
+        st.session_state[self._name] = self._state.copy()
 
-    def update_local_variables(self, **vars):
-        State.update_locals(self.group, **vars)
+    def setup(self):
 
-    def __call__(self):
+        self._state = {
+            'globals': {},
+            'locals': Tree(node_class=Page),
+            'is_first_run': True,
+            'active_page': None
+        }
+
+        self.update()
+
+    def update_active_page(self, page, update=False):
+        self._state['active_page'] = page
+        if update:
+            self.update()
+
+    def update_locals(self, tree: Tree, update=False):
+        self._state['locals'] = tree
+        if update:
+            self.update()
+
+    def clear_locals(self, node, update=False):
+        self._state['locals'][node].data.clear()
+        if update:
+            self.update()
+
+    def update_globals(self, update=False, **kwargs):
+        self._state['globals'].update(**kwargs)
+        if update:
+            self.update()
+
+    def clear_globals(self, update=False):
+        self._state['globals'].clear()
+        if update:
+            self.update()
+
+    def set_first_run_to_false(self):
+        self._state['is_first_run'] = False
+
+class Page(Node):
+
+    def __init__(
+        self, 
+        tag=None, 
+        identifier=None, 
+        data=None, 
+        elements=None, 
+        run_header=False, 
+        run_footer=False, 
+        header_kwargs=None,
+        footer_kwargs=None
+    ):
+        self._parent = Node(data={})
+        self._state = State()
+        self._elements = elements if elements is not None else []
+        self._run_header = run_header
+        self._run_footer = run_footer
+        self._header_kwargs = header_kwargs if header_kwargs is not None else {}
+        self._footer_kwargs = footer_kwargs if footer_kwargs is not None else {}
+        super().__init__(tag or self.__class__.__name__, identifier, None, data or {})
+
+    def __getitem__(self, item):
+
+        if item in self.data:
+            st.write('pulled from class data')
+            return self.data[item]
+
+        elif item in self.locals:
+            st.write('pulled from parent data')
+            return self.locals[item]
+
+        elif isinstance(self._state, State):
+            if item in self.globals:
+                st.write('pulled from global data')
+                return self.globals[item]
+
+        else:
+            raise KeyError('{} was not found in Page<{}>'.format(item, self.tag))
+
+    def run(self, parent=None, state=None):
+        
+        if isinstance(parent, Page):
+            self._parent = parent
+        if isinstance(state, State):
+            self._state = state
+        if self._run_header:
+            self.header(**self._header_kwargs)
+
+        for e in self._elements:
+            e(self)
+
+        if self._run_footer:
+            self.footer(**self._footer_kwargs)
+
+    @property
+    def globals(self):
+        return self._state.globals
+
+    @property
+    def locals(self):
+        return self._parent.data
+
+    def update_globals(self, **kwargs):
+        self._state.update_globals(True, **kwargs)
+
+    def update_parent_data(self, **kwargs):
+        old_data = self._parent.data.update(**kwargs)
+
+    def header(self, **kwargs):
         raise NotImplementedError()
+
+    def footer(self, **kwargs):
+        raise NotImplementedError()
+
+class Element:
+
+    def __init__(self, name=None) -> None:
+        self._name = name or self.__class__.__name__
+
+    def __call__(self, target: Page):
+        raise NotImplementedError()
+
+class App(Tree):
+
+    def __init__(self, state: State=None, identifier=None):
+        self._state = state or STATE
+        super().__init__(None, None, Page, identifier)
+        import numpy as np
+        st.write(np.random.randn())
+
+    def sidebar(self, nid):
+        selections = self.children(nid)
+        selections.extend(self.siblings(nid))
+        active_node = self.get_node(nid)
+        selections.insert(0, active_node)
+        parent = self.parent(nid)
+        root = self.root
+
+
+        page_select = st.sidebar.radio(
+            'Child Pages',
+            selections,
+            format_func=lambda x: x.tag
+        )
+
+        if parent is not None:
+            if st.sidebar.button('Back to {}'.format(parent.tag)):
+                return parent
+
+        if nid!=root:
+            if st.button('Back to {}'.format(root)):
+                return self.get_node(root)
+
+        return page_select
+
+    def run(self):
+
+        st.write(self._state.state)
+
+
+        if self._state.is_first_run:
+            active_page = self.get_node(self.root)
+            self._state.update_active_page(active_page, True)
+            self._state.set_first_run_to_false()
+
+        else:
+            active_page = self._state.active_page
+
+        new_active_page = self.sidebar(active_page.identifier)
+        parent = self.parent
+
+        new_active_page.run(parent, self._state)
+        st.write('Before update: {}'.format(active_page.tag))
+        self._state.update_active_page(new_active_page, True)
+        st.write('After update: {}'.format(active_page.tag))
+
+
+class AppDepr:
+
+    def __init__(self, pages: List[Page], setup_on_every_run=False, display_local_variables=False, **global_vars) -> None:
+        self._global_vars = global_vars
+        self._pages = pages
+        self._page_groups = defaultdict(dict)
+        self._setup_on_every_run = setup_on_every_run
+        self._display_local_variables = display_local_variables
+
+        for p in pages:
+            self._page_groups[p.group][p.name] = p
+
+    def _re_init(self):
+        st.session_state.globals['is_first_run'] = True
+
+    def sidebar_options(self):
+        page_group_selection = st.sidebar.radio('Select Page Group', self._page_groups.keys())
+        page_options = self._page_groups[page_group_selection]
+        display_page_choices = [p for p in page_options if not page_options[p]._is_setup_page]
+        page_name = st.sidebar.radio('Select Page', display_page_choices)
+        page_selection = page_options[page_name]
+        st.sidebar.button('Re-initialize', on_click=self._re_init)
+        State.update_active_page(page_selection)
+
+
+    def display_local_vars(self, page):
+        with st.expander('Local Variables'):
+            local_vars = page.locals
+            for var_name in local_vars:
+                st.subheader(var_name)
+                var = local_vars[var_name]
+                if isinstance(var, (pd.Series, pd.DataFrame)):
+                    st.dataframe(var)
+                else:
+                    st.write(var)
+
+    def setup(self):
+        with st.spinner('Running setup pages..'):
+            for p in self._pages:
+                if p._is_setup_page:
+                    st.write("Setting up Page '{}' in Group '{}'...".format(p.name, p.group))
+                    p()
+                    st.success("Setup Page '{}' in Group '{}'!".format(p.name, p.group))
+    
+    def run(self):
+
+        #initialize session state (first run only)
+        State.setup()
+
+        if State.is_first_run() or self._setup_on_every_run:
+            st.session_state.globals['is_first_run'] = False
+            self.setup()
+
+
+        #page selection options
+        self.sidebar_options()
+
+        current_page = State.current_page()
+
+        if isinstance(current_page, Page) and (current_page.generate_title):
+            st.title('{}::{}'.format(current_page.group, current_page.name))
+
+        #display local variables
+        if self._display_local_variables:
+            self.display_local_vars(current_page)
+
+        current_page()
+
 
 class PlottingPage(Page):
 
@@ -199,80 +399,6 @@ class PlottingPage(Page):
 
         return fig
 
-class App:
-
-    def __init__(self, pages: List[Page], setup_on_every_run=False, display_local_variables=False, **global_vars) -> None:
-        self._global_vars = global_vars
-        self._pages = pages
-        self._page_groups = defaultdict(dict)
-        self._setup_on_every_run = setup_on_every_run
-        self._display_local_variables = display_local_variables
-
-        for p in pages:
-            self._page_groups[p.group][p.name] = p
-
-    def _re_init(self):
-        st.session_state.globals['is_first_run'] = True
-
-    def sidebar_options(self):
-        page_group_selection = st.sidebar.radio('Select Page Group', self._page_groups.keys())
-        page_options = self._page_groups[page_group_selection]
-        display_page_choices = [p for p in page_options if not page_options[p]._is_setup_page]
-        page_name = st.sidebar.radio('Select Page', display_page_choices)
-        page_selection = page_options[page_name]
-        st.sidebar.button('Re-initialize', on_click=self._re_init)
-        State.update_current_page(page_selection)
-
-
-    def display_local_vars(self, page):
-        with st.expander('Local Variables'):
-            local_vars = page.locals
-            for var_name in local_vars:
-                st.subheader(var_name)
-                var = local_vars[var_name]
-                if isinstance(var, (pd.Series, pd.DataFrame)):
-                    st.dataframe(var)
-                else:
-                    st.write(var)
-
-    def setup(self):
-        with st.spinner('Running setup pages..'):
-            for p in self._pages:
-                if p._is_setup_page:
-                    st.write("Setting up Page '{}' in Group '{}'...".format(p.name, p.group))
-                    p()
-                    st.success("Setup Page '{}' in Group '{}'!".format(p.name, p.group))
-    
-    def run(self):
-
-        #initialize session state (first run only)
-        State.setup()
-
-        if State.is_first_run() or self._setup_on_every_run:
-            st.session_state.globals['is_first_run'] = False
-            self.setup()
-
-
-        #page selection options
-        self.sidebar_options()
-
-        current_page = State.current_page()
-
-        if isinstance(current_page, Page) and (current_page.generate_title):
-            st.title('{}::{}'.format(current_page.group, current_page.name))
-
-        #display local variables
-        if self._display_local_variables:
-            self.display_local_vars(current_page)
-
-        current_page()
-
-
-
-        
-
-
-
-
+STATE = State('SessionState')
 
 

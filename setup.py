@@ -6,6 +6,6 @@ setup(
     packages=find_packages(include=['stream', 'stream.*']),
     install_requires=[
         'streamlit==1.1.0',
-        'bokeh==2.2.3'
+        'bokeh>=2.2.3'
     ]
 )
