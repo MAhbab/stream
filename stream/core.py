@@ -7,83 +7,14 @@ import bokeh.models as bkm
 import bokeh.plotting as bkp
 import numpy as np
 from treelib import Tree, Node
+from copy import deepcopy
 
 HEIGHT = 400
 WIDTH = 600
 TOOLBAR_LOC = 'below'
 SIZING_MODE = 'stretch_both'
 
-class State:
-
-    def __init__(self, name=None) -> None:
-        self._name = name or self.__class__.__name__
-
-        if name in st.session_state:
-            self._state = st.session_state[name]
-        else:
-            self.setup()
-
-    @property
-    def state(self):
-        return st.session_state[self._name]
-
-    @property
-    def active_page(self) -> Node:
-        return self.state['active_page']
-
-    @property
-    def locals(self) -> Tree:
-        return self.state['locals']
-
-    @property
-    def globals(self):
-        return self.state['globals']
-
-    @property
-    def is_first_run(self):
-        return self.state['is_first_run']
-
-    def update(self):
-        st.session_state[self._name] = self._state.copy()
-
-    def setup(self):
-
-        self._state = {
-            'globals': {},
-            'locals': Tree(node_class=Page),
-            'is_first_run': True,
-            'active_page': None
-        }
-
-        self.update()
-
-    def update_active_page(self, page, update=False):
-        self._state['active_page'] = page
-        if update:
-            self.update()
-
-    def update_locals(self, tree: Tree, update=False):
-        self._state['locals'] = tree
-        if update:
-            self.update()
-
-    def clear_locals(self, node, update=False):
-        self._state['locals'][node].data.clear()
-        if update:
-            self.update()
-
-    def update_globals(self, update=False, **kwargs):
-        self._state['globals'].update(**kwargs)
-        if update:
-            self.update()
-
-    def clear_globals(self, update=False):
-        self._state['globals'].clear()
-        if update:
-            self.update()
-
-    def set_first_run_to_false(self):
-        self._state['is_first_run'] = False
+import inspect
 
 class Page(Node):
 
@@ -96,10 +27,8 @@ class Page(Node):
         run_header=False, 
         run_footer=False, 
         header_kwargs=None,
-        footer_kwargs=None
+        footer_kwargs=None,
     ):
-        self._parent = Node(data={})
-        self._state = State()
         self._elements = elements if elements is not None else []
         self._run_header = run_header
         self._run_footer = run_footer
@@ -107,52 +36,17 @@ class Page(Node):
         self._footer_kwargs = footer_kwargs if footer_kwargs is not None else {}
         super().__init__(tag or self.__class__.__name__, identifier, None, data or {})
 
-    def __getitem__(self, item):
-
-        if item in self.data:
-            st.write('pulled from class data')
-            return self.data[item]
-
-        elif item in self.locals:
-            st.write('pulled from parent data')
-            return self.locals[item]
-
-        elif isinstance(self._state, State):
-            if item in self.globals:
-                st.write('pulled from global data')
-                return self.globals[item]
-
-        else:
-            raise KeyError('{} was not found in Page<{}>'.format(item, self.tag))
-
-    def run(self, parent=None, state=None):
+    def __call__(self, parent, **global_vars):
         
-        if isinstance(parent, Page):
-            self._parent = parent
-        if isinstance(state, State):
-            self._state = state
         if self._run_header:
             self.header(**self._header_kwargs)
 
         for e in self._elements:
-            e(self)
+            
+            e(self, **global_vars)
 
         if self._run_footer:
             self.footer(**self._footer_kwargs)
-
-    @property
-    def globals(self):
-        return self._state.globals
-
-    @property
-    def locals(self):
-        return self._parent.data
-
-    def update_globals(self, **kwargs):
-        self._state.update_globals(True, **kwargs)
-
-    def update_parent_data(self, **kwargs):
-        old_data = self._parent.data.update(**kwargs)
 
     def header(self, **kwargs):
         raise NotImplementedError()
@@ -160,67 +54,132 @@ class Page(Node):
     def footer(self, **kwargs):
         raise NotImplementedError()
 
+class DefaultStartPage(Page):
+
+    def __init__(self):
+        super().__init__(tag='Home Page', identifier='root', run_header=True)
+
+    def header(self, **kwargs):
+        st.header('Welcome')
+        st.text('This is the default home page')
+        st.text('Use the panel on the left to navigate pages')
+        st.text("In case of issues, press the Re-initialize button in the navigation panel")
+        st.text('If issues persist, contact Mahfuj.')
+
+class State(Tree):
+
+    def __init__(self, name=None, **global_vars) -> None:
+        self._name = name or self.__class__.__name__
+        self._globals = global_vars
+
+        if self._name in st.session_state:
+            tree = st.session_state[self._name]['locals']
+
+            #NOTE: a deep copy is made from the tree existing in the session state
+            #this way, changes to the state are only saved upon updating via self.update
+            super().__init__(tree, True, Page, self._name)
+            self._active_page = st.session_state[self._name]['active_page']
+            self._is_first_run = st.session_state[self._name]['is_first_run']
+        else:
+            super().__init__(node_class=Page, identifier=self._name)
+            st.session_state[self._name] = {}
+            start_page = DefaultStartPage()
+            self.add_node(start_page)
+            self._active_page = self.root
+            self._is_first_run = True
+            self.update(True)
+
+    @property
+    def active_page(self) -> Node:
+        if self._active_page is not None:
+            return self.get_node(self._active_page)
+        else:
+            raise Exception('No active page was set')
+
+    @property
+    def globals(self):
+        return self._globals
+
+    @property
+    def is_first_run(self):
+        return self._is_first_run
+
+    def add_node(self, node, parent=None):
+        if (parent is None) and (self.root is not None):
+            parent = self.root
+        return super().add_node(node, parent)
+
+    def update(self, is_first_run=False):
+        st.session_state[self._name]['locals'] = Tree(self, True, Page, self._name)
+        st.session_state[self._name]['active_page'] = self._active_page
+        st.session_state[self._name]['is_first_run'] = is_first_run
+
+    def update_active_page(self, page_id):
+        if isinstance(page_id, Page):
+            page_id = page_id.identifier
+        self._active_page = page_id
+        self.update()
+
+    def reset(self):
+        for node in self.all_nodes_itr():
+            node.data.clear()
+        self._is_first_run = True
+        self.update()
+        st.write(self.all_nodes())
+        st.write(st.session_state[self._name]['locals'].all_nodes())
+
+    def run(self):
+        raise NotImplementedError()
+
+
 class Element:
 
     def __init__(self, name=None) -> None:
         self._name = name or self.__class__.__name__
 
-    def __call__(self, target: Page):
+    def __call__(self, target: Page, **global_vars):
         raise NotImplementedError()
 
-class App(Tree):
+class App(State):
 
-    def __init__(self, state: State=None, identifier=None):
-        self._state = state or STATE
-        super().__init__(None, None, Page, identifier)
-        import numpy as np
-        st.write(np.random.randn())
-
-    def sidebar(self, nid):
-        selections = self.children(nid)
+    def sidebar(self):
+        nid = self._active_page
+        selections = [self.active_page]
+        selections.extend(self.children(nid))
         selections.extend(self.siblings(nid))
-        active_node = self.get_node(nid)
-        selections.insert(0, active_node)
-        parent = self.parent(nid)
-        root = self.root
-
+        selection_ids = [(x.tag, x.identifier) for x in selections]
+        selection_ids.sort()
 
         page_select = st.sidebar.radio(
             'Child Pages',
-            selections,
-            format_func=lambda x: x.tag
+            selection_ids,
+            format_func=lambda x: x[0]
         )
 
-        if parent is not None:
+        st.sidebar.button('Re-initialize', on_click=self.reset)
+
+        if nid!=self.root:
+            parent = self.parent(nid)
             if st.sidebar.button('Back to {}'.format(parent.tag)):
                 return parent
+            
+            if parent.identifier != self.root:
+                if st.sidebar.button('Back to {}'.format(self.root.title())):
+                    return self.root
 
-        if nid!=root:
-            if st.button('Back to {}'.format(root)):
-                return self.get_node(root)
-
-        return page_select
+        return self.get_node(page_select[1])
 
     def run(self):
 
-        st.write(self._state.state)
+        last_page = self.active_page
+        new_active_page = self.sidebar()
+        parent = self.parent(new_active_page.identifier)
 
-
-        if self._state.is_first_run:
-            active_page = self.get_node(self.root)
-            self._state.update_active_page(active_page, True)
-            self._state.set_first_run_to_false()
-
-        else:
-            active_page = self._state.active_page
-
-        new_active_page = self.sidebar(active_page.identifier)
-        parent = self.parent
-
-        new_active_page.run(parent, self._state)
-        st.write('Before update: {}'.format(active_page.tag))
-        self._state.update_active_page(new_active_page, True)
-        st.write('After update: {}'.format(active_page.tag))
+        new_active_page(parent, **self.globals)
+        if parent is not None:
+            self.update_node(parent.identifier, data=parent.data)
+        self.update_node(new_active_page.identifier, data=new_active_page.data)
+        self.update_active_page(new_active_page.identifier)
 
 
 class AppDepr:
@@ -398,7 +357,5 @@ class PlottingPage(Page):
         fig.line(**plt_kwargs)
 
         return fig
-
-STATE = State('SessionState')
 
 

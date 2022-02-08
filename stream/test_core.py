@@ -1,6 +1,6 @@
 import unittest
 from xml.etree import ElementInclude
-from core import State, Page, Element
+from core import State, Page, Element, DefaultStartPage
 import streamlit as st
 import numpy as np
 from treelib import Tree
@@ -11,11 +11,12 @@ def assertTrue(test_name, expr):
     else:
         st.error("'{}' ran and failed".format(test_name))
 
-def assertFalse(test_name, expr):
-    if  not expr:
+def assertEqual(test_name, expected_val, actual_val):
+    expr = expected_val == actual_val
+    if  expr:
         st.success("'{}' ran successfully".format(test_name))
     else:
-        st.error("'{}' ran and failed".format(test_name))
+        st.error("'{}' ran and failed (expected value: {}, actual value: {}".format(test_name, expected_val, actual_val))
 
 class TestCase:
 
@@ -39,59 +40,24 @@ class TestState(TestCase):
         pass
     
     def test_init(self):
-        State(self.name)
+        new_state = State(self.name)
         assertTrue('Initialize State', self.name in st.session_state)
-
-    def test_setup(self):
-        obj = State(self.name)
-        test_keys = set(obj.state.keys())
-        correct_keys = {'globals', 'locals', 'active_page', 'is_first_run'}
-        assertTrue('Setup State variables', test_keys == correct_keys)
-
-    def test_update(self):
-        obj = State(self.name)
-        var_name = 'var'
-        obj._state[var_name] = 5
-        assertTrue('Change made but not updated', var_name not in obj.state)
-        obj.update()
-        assertTrue('Change made and updated', var_name in obj.state)
-        assertTrue('Variable corresponds to correct value', obj.state[var_name] == 5)
+        assertEqual('Active page is None', 'root', new_state._active_page)
+        assertTrue('No global variables present', not new_state._globals)
 
     def test_update_active_page(self):
         obj = State(self.name)
-        assertTrue('Default page initialized', obj.active_page is None)
         new_page = Page('new_page', 'new_page')
-        obj.update_active_page(new_page, False)
-        assertTrue('Page changed but not updated', obj.active_page is None)
-        obj.update()
-        assertTrue('Page changed and updated', obj.active_page is new_page)
-        other_new_page = Page('other_new_page', 'other_new_page')
-        assertTrue('Changed to correct page', obj.active_page.identifier=='new_page')
-        obj.update_active_page(other_new_page, True)
-        assertTrue('Second change to correct page', obj.active_page.identifier=='other_new_page')
+        other_page = Page('other_page', 'other_page')
+        obj.add_node(new_page)
+        obj.add_node(other_page)
+        
+        assertEqual('Default page initialized', DefaultStartPage().identifier, st.session_state[self.name]['active_page'])
+        obj.update_active_page(new_page.identifier)
+        assertEqual('Page changed and updated', 'new_page', obj.active_page.identifier)
+        obj.update_active_page(other_page.identifier)
+        assertEqual('Second page change and update', 'other_page', obj.active_page.identifier)
 
-    def test_update_and_clear_locals(self):
-        obj = State(self.name)
-        assertTrue('Empty Tree initialized', len(obj.locals)==0)
-        mytree = Tree(obj.locals, True, Page)
-        new_page = Page('new_page', 'new_page', data={'favorite_accountant': 'Oscar'})
-        mytree.add_node(new_page)
-        assertTrue('Change made but not updated', len(obj.locals)==0)
-        obj.update_locals(mytree, True)
-        assertTrue('Change made but and updated', len(obj.locals)==1)
-        assertTrue('Correct Page data', obj.locals['new_page'].data['favorite_accountant']=='Oscar')
-        obj.clear_locals('new_page')
-        assertTrue('Cleared Page data', not obj.locals['new_page'].data)
-
-    
-    def test_update_and_clear_globals(self):
-        obj = State(self.name)
-        assertTrue('Initialize empty globals', not obj.globals)
-        obj.update_globals(True, dog='Rufus', cat='Thor')
-        assertTrue('Correct global variable value #1', obj.globals['dog']=='Rufus')
-        assertTrue('Correct global variable value #2', obj.globals['cat']=='Thor')
-        obj.clear_globals(True)
-        assertTrue('Successfully clear globals', not obj.globals)
 
 class TestPage(TestCase):
 
