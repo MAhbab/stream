@@ -141,9 +141,7 @@ class App(State):
 
     def sidebar(self):
         nid = self._active_page
-        selections = [self.active_page]
-        selections.extend(self.children(nid))
-        selections.extend(self.siblings(nid))
+        selections = self.all_nodes_itr()
         selection_ids = [(x.tag, x.identifier) for x in selections]
         selection_ids.sort()
 
