@@ -1,17 +1,6 @@
 from typing import List
-import pandas as pd
 import streamlit as st
-from collections import defaultdict
-import bokeh.models as bkm
-import bokeh.plotting as bkp
-import numpy as np
 from treelib import Tree, Node
-
-HEIGHT = 400
-WIDTH = 600
-TOOLBAR_LOC = 'below'
-SIZING_MODE = 'stretch_both'
-
 
 class Page(Node):
 
@@ -65,7 +54,7 @@ class DefaultStartPage(Page):
 
 class State(Tree):
 
-    def __init__(self, name=None, **global_vars) -> None:
+    def __init__(self, name=None, start_page=None, **global_vars) -> None:
         self._name = name or self.__class__.__name__
         self._globals = global_vars
 
@@ -80,7 +69,7 @@ class State(Tree):
         else:
             super().__init__(node_class=Page, identifier=self._name)
             st.session_state[self._name] = {}
-            start_page = DefaultStartPage()
+            start_page = start_page if isinstance(start_page, Page) else DefaultStartPage()
             self.add_node(start_page)
             self._active_page = self.root
             self._is_first_run = True
