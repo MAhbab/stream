@@ -1,6 +1,7 @@
 from typing import List
 import streamlit as st
 from treelib import Tree, Node
+import pandas as pd
 
 class Page(Node):
 
@@ -23,6 +24,23 @@ class Page(Node):
         super().__init__(tag or self.__class__.__name__, identifier, None, data or {})
 
     def __call__(self, parent, **global_vars):
+
+        with st.expander('Local Variables'):
+            for key in self.data:
+                val = self.data[key]
+                if isinstance(val, (pd.DataFrame, pd.Series)):
+                    st.dataframe(val)
+                else:
+                    st.write(val)
+
+        with st.expander('Global Variables'):
+            for key in global_vars:
+                val = global_vars[key]
+                st.subheader(key)
+                if isinstance(val, (pd.DataFrame, pd.Series)):
+                    st.dataframe(val)
+                else:
+                    st.write(val)
         
         if self._run_header:
             self.header(**self._header_kwargs)
@@ -153,7 +171,13 @@ class App(State):
 
         return self.get_node(page_select[1])
 
+    def setup(self):
+        raise NotImplementedError()
+
     def run(self):
+
+        if self.is_first_run:
+            self.setup()
 
         last_page = self.active_page
         new_active_page = self.sidebar()
