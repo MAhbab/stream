@@ -1,7 +1,20 @@
-from typing import List
+from typing import Any, List
 import streamlit as st
 from treelib import Tree, Node
 import pandas as pd
+
+class Element:
+
+    def __init__(self, name=None, pass_data_to_parent=False) -> None:
+        self._name = name or self.__class__.__name__
+        self._pass_to_parent = pass_data_to_parent
+
+    @property
+    def name(self):
+        return self._name
+
+    def __call__(self, target: Node, **global_vars) -> Any:
+        raise NotImplementedError()
 
 class Page(Node):
 
@@ -23,14 +36,23 @@ class Page(Node):
         self._footer_kwargs = footer_kwargs if footer_kwargs is not None else {}
         super().__init__(tag or self.__class__.__name__, identifier, None, data or {})
 
-    def __call__(self, parent, **global_vars):
+    @property
+    def elements(self) -> List[Element]:
+        return self._elements
+
+    def __call__(self, parent: Node, **global_vars):
         
         if self._run_header:
             self.header(**self._header_kwargs)
 
-        for e in self._elements:
-            
-            e(self, **global_vars)
+        for e in self.elements:
+
+            val = e(self, **global_vars)
+
+            if e._pass_to_parent:
+                parent.data[e.name] = val
+            else:
+                self.data[e.name] = val
 
         if self._run_footer:
             self.footer(**self._footer_kwargs)
@@ -186,22 +208,6 @@ class Session(Tree):
             st.text('All pages')
             st.write(list(self.all_nodes_itr()))
 
-
-
-    def run(self):
-        raise NotImplementedError()
-
-
-class Element:
-
-    def __init__(self, name=None) -> None:
-        self._name = name or self.__class__.__name__
-
-    def __call__(self, target: Page, **global_vars):
-        raise NotImplementedError()
-
-class App(Session):
-
     def run(self):
 
         if self._debug_mode:
@@ -217,6 +223,9 @@ class App(Session):
             self.update_node(parent.identifier, data=parent.data)
         self.update_node(new_active_page.identifier, data=new_active_page.data)
         self.update_active_page(new_active_page.identifier)
+
+
+
 
 
 
