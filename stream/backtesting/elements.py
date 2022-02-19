@@ -5,7 +5,7 @@ import streamlit as st
 import bt
 from bt.backtest import Result
 import datetime as dt
-from plotting import time_series, bkformat
+from stream.backtesting.plotting import time_series, bkformat
 
 class TickerSelect(Element):
 

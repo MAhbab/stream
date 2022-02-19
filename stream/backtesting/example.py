@@ -3,7 +3,7 @@ import pandas as pd
 import bt 
 import numpy as np 
 import datetime as dt
-from backtester import Backtester
+from core import Backtester
 
 
 #make sample data
