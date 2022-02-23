@@ -138,6 +138,8 @@ class Session(Tree):
         st.session_state[self._name]['is_first_run'] = self._is_first_run
 
         adjacent_pages = self.children(self._active_page_id)
+        if not adjacent_pages: #if active page is a leaf, display siblings instead of children
+            adjacent_pages = self.siblings(self._active_page_id)
         parent = self.parent(self._active_page_id)
 
         if parent is not None:
