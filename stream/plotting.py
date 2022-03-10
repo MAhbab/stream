@@ -16,23 +16,6 @@ TOOLBAR_LOC = 'below'
 SIZING_MODE = 'stretch_both'
 colors = itertools.cycle(Magma11)
 
-def default_figure(datetime_x=False, ttips=None):
-    fig_kwargs = {
-        'height': HEIGHT,
-        'width': WIDTH,
-        'toolbar_location': TOOLBAR_LOC,
-        'sizing_mode': SIZING_MODE
-    }
-    if datetime_x:
-        fig_kwargs['x_axis_type'] = 'datetime'
-    fig = bkp.figure(**fig_kwargs)
-    if ttips is not None:
-        hover = bkm.HoverTool(tooltips=ttips, mode='vline')
-        fig.add_tools(hover)
-    
-    return fig
-
-
 def bkformat(figure, xlabel=None, ylabel=None, title=None):
     figure.legend.location = 'top_left'
     figure.legend.click_policy = 'hide'
@@ -48,14 +31,31 @@ def bkformat(figure, xlabel=None, ylabel=None, title=None):
         figure.title.text_font_size = '16pt'
     return figure
 
+
+def default_figure(datetime_x=False, ttips=None, **fmt_kwargs):
+    fig_kwargs = {
+        'height': HEIGHT,
+        'width': WIDTH,
+        'toolbar_location': TOOLBAR_LOC,
+        'sizing_mode': SIZING_MODE
+    }
+    if datetime_x:
+        fig_kwargs['x_axis_type'] = 'datetime'
+    fig = bkp.figure(**fig_kwargs)
+    if ttips is not None:
+        hover = bkm.HoverTool(tooltips=ttips, mode='vline')
+        fig.add_tools(hover)
+
+    fmt_fig = bkformat(fig, **fmt_kwargs)
+    
+    return fmt_fig
+
 #make an interactive time series plot
 def time_series(
     dframe: pd.DataFrame,
     upper_bound: pd.DataFrame = None, #include these to plot confidence intervals
     lower_bound: pd.DataFrame = None, #NOTE: column names must be identical to :arg: dframe
-    xlabel: str = None,
-    ylabel: str = None,
-    title: str = None
+    **fmt_kwargs
 ):
 
     #pre process data
@@ -64,7 +64,7 @@ def time_series(
     ttips = [('Name', '@name'),('Date', '@date_str'), ('Value', '@value{0.00a}')]
     COLORS = itertools.cycle(bok.palettes.magma(len(COLS)+1))
 
-    fig = default_figure(True, ttips)
+    fig = default_figure(True, ttips, **fmt_kwargs)
 
     #set flag for confidence intervals
     if isinstance(upper_bound, pd.DataFrame) and isinstance(lower_bound, pd.DataFrame):
@@ -96,9 +96,7 @@ def time_series(
             lbound = lower_bound[c]
             fig.varea(x=ubound.index, y1=ubound.values, y2=lbound.values, fill_color=clr, fill_alpha=0.3, name='{} 95% Confidence Interval'.format(name))
     
-    fig_formatted = bkformat(fig, xlabel, ylabel, title)
-
-    return fig_formatted
+    return fig
 
 
 
@@ -117,14 +115,14 @@ def bquad(srs, bins):
     bounds_dict['bottom'] = [0]*len(rgrp)
     return bounds_dict
 
-def hist(dframe: pd.DataFrame, bins: int):
+def hist(dframe: pd.DataFrame, bins: int, **fmt_kwargs):
 
     ncols = len(dframe.columns)
     COLORS = itertools.cycle(bok.palettes.magma(ncols+1))
     ttips = [('Name', '$name'), ('Count', '@top'), ('Value', '$x{0,0.00}')]
 
 
-    myfig = default_figure(ttips=ttips)
+    myfig = default_figure(ttips=ttips, **fmt_kwargs)
     for k in dframe.columns:
         kw = bquad(dframe[k], bins)
         myfig.quad(

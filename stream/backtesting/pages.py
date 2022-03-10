@@ -1,5 +1,5 @@
 #%%
-from stream import Page, Element
+from collections import defaultdict
 import numpy as np
 import streamlit as st
 import bt
@@ -12,16 +12,29 @@ from statsmodels.regression.rolling import RollingOLS
 import statsmodels.api as sm
 from typing import Any, Dict, Hashable, List, Union
 from stream.backtesting.elements import TickerSelect, BatchBacktest, BacktestDescription
-#something new
+
+from ..core import BacktestPage
 
 
-class ResultsOverview(Page):
+
+class BacktestLandingPage(BacktestPage):
+
+    def __init__(self, data=None):
+        elements = [TickerSelect(), BatchBacktest(), BacktestDescription()]
+        super().__init__(data=data, elements=elements)
+
+    def header(self, parent=None, **kwargs):
+        st.header('QIS/JSt Backtester')
+        return super().header(parent, **kwargs)
+
+
+class ResultsOverview(BacktestPage):
 
     def __init__(self, tag=None, identifier=None, data=None, elements=None, run_header=False, run_footer=False, header_kwargs=None, footer_kwargs=None, *bkts):
         super().__init__(tag, identifier, data, elements, run_header, run_footer, header_kwargs, footer_kwargs)
         self._bkts = bkts
 
-    def _backtest_selection(self, parent: Page, **global_vars):
+    def _backtest_selection(self, parent: BacktestPage, **global_vars):
         parent_bkts = {key: parent.data[key] for key in parent.data if isinstance(parent.data[key], bt.Backtest)}
         global_bkts = {key: global_vars[key] for key in global_vars if isinstance(global_vars[key], bt.Backtest)}
         all_bkts = dict(parent_bkts, **global_bkts)
@@ -161,7 +174,7 @@ class ResultsOverview(Page):
             rets_plot = self.returns_group_plot()
             st.bokeh_chart(rets_plot)
 
-class RollingOLS(Page):
+class RollingOLS(BacktestPage):
 
     def __init__(self, group_name='output'):
         super().__init__(group_name=group_name)
