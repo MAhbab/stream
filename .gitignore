@@ -1,5 +1,5 @@
 # Everything except core.py and its associated tests
 
 stream/__pycache__/*
-stream/backtesting/__pycache__/*
+stream/backtesting/*
 
