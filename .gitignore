@@ -1,9 +1,5 @@
 # Everything except core.py and its associated tests
-*
 
-!stream/core.py
-!stream/test_core.py
-!setup.py
-!stream/__init__.py
-!README.md
+stream/__pycache__/*
+stream/backtesting/__pycache__/*
 
