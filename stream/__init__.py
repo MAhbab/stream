@@ -1,2 +1,2 @@
 from .core import *
-from . import backtesting
+from .backtesting.app import Backtester

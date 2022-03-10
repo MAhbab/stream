@@ -1,11 +1,13 @@
 #%%
 import pandas as pd
-from stream import Element, Page
+from stream import Element, BacktestPage
 import streamlit as st
 import bt
-from bt.backtest import Result
 import datetime as dt
-from stream.backtesting.plotting import time_series, bkformat
+from stream.backtesting.plotting import time_series
+from treelib import Node
+from typing import Any, List
+import datetime as dt
 
 class TickerSelect(Element):
 
@@ -35,11 +37,12 @@ class TickerSelect(Element):
         self._dflt_start_date = self._dflt_end_date - dt.timedelta(days=365*4)
 
 
-    def __call__(self, target: Page, **global_vars):
+    def __call__(self, target: BacktestPage, **global_vars):
+        fmt_func = lambda x: x.replace('Adj_', 'Adjusted ')
         
         with st.form(self._name):
-            selection_name = st.text_input('Name this Selection')
-            tkrs = st.multiselect('Select Symbols', self._symbols)
+            selection_name = st.text_input('Name this Selection', 'My Dataset')
+            tkrs = st.multiselect('Select Symbols', self._symbols, format_func=fmt_func)
             field = st.selectbox('Select Field', self._fields, 10)
             start_date = st.date_input('Select Start Date', self._dflt_start_date)
             end_date = st.date_input('Select an End Date', self._dflt_end_date)
@@ -49,43 +52,45 @@ class TickerSelect(Element):
 
             if submit:
                 if field!='Adj_Close':
-                    input_ = ['{}:{}'.format(t, field) for t in tkrs]
+                    input = ['{}:{}'.format(t, field) for t in tkrs]
                 else:
                     input = list(tkrs)
                 data = bt.get(input, start_date=start_date, end_date=end_date)
                 data.columns = [x.upper() for x in data.columns]
-                target.data[selection_name] = data
+                target.datasets[selection_name] = data
 
 
 class BatchBacktest(Element):
 
-    def __call__(self, target: Page, **global_vars):
+    def batch_backtests(self, target, strats, datasets):
+        bkts = []
+        for s in strats:
 
-        strat_selections = st.multiselect('Select a Strategy', target.strategies)
-        data_selections = st.multiselect('Select Data', target.datasets)
+            strat = target.data[s]
 
-        if st.button('Generate Backtests'):
-            progress_so_far = 0
-            progress_bar = st.progress(progress_so_far)
-            incr = 1/(len(strat_selections)*len(data_selections))
+            name_template = "Strategy<{s}> with Data<{d}>"
+            for df_name in datasets:
+                df = target.data[df_name]
+                name = name_template.format(s=strat.name, d=df.name)
 
-            for s in strat_selections:
+                bk = bt.Backtest(strat, df.dropna(), name=name)
 
-                strat = target.data[s]
+                bkts.append(bk)
 
-                name_template = "Strategy<{s}> with Data<{d}>"
-                for df_name in data_selections:
-                    df = target.data[df_name]
-                    name = name_template.format(s=strat.name, d=df.name)
+        name = 'Batch Backtest {}'.format(dt.datetime.now().strftime('%H:%M'))
 
-                    bk = bt.Backtest(strat, df.dropna(), name=name)
-                    bk.run()
+        target._run(name, *bkts)
 
-                    target.data['backtests'][name] = bk
-                    progress_so_far += incr
-                    progress_bar.progress(progress_so_far)
+    def __call__(self, target: BacktestPage, **global_vars):
 
-            st.success('Backtests ran successfully!')
+        strat_selections = st.multiselect('Select a Strategy', target.strategies, format_func=target._data_name)
+        data_selections = st.multiselect('Select Data', target.datasets, format_func=target._data_name)
+
+        st.button(
+            label='Run Backtests',
+            on_click=self.batch_backtests,
+            kwargs={'target': target, 'strats': strat_selections, 'datasets': data_selections}
+        )
 
 
 class BacktestDescription(Element):
@@ -104,21 +109,26 @@ class BacktestDescription(Element):
             except:
                 return stats.loc[x]
 
-        st.subheader('General')
-        st.metric('Initial Capital', '${}'.format(bk.initial_capital))
-        st.metric('Starting Date', bk.dates[0].strftime('%m/%d/%Y'))
-        st.metric('End Date', bk.dates[0].strftime('%m/%d/%Y'))
+        col1, col2, col3 = st.columns(3)
 
-        st.subheader('Risk & Return')
-        st.metric('CAGR', get_stat('cagr'))
-        st.metric('Annualized Volatility', get_stat('yearly_vol'))
-        st.metric('Annualized Sharpe Ratio', get_stat('yearly_sharpe'))
-        st.metric('Annualized Sortino Ratio', get_stat('yearly_sortino'))
+        with col1:
+            st.subheader('General')
+            st.metric('Initial Capital', '${}'.format(bk.initial_capital))
+            st.metric('Starting Date', bk.dates[0].strftime('%m/%d/%Y'))
+            st.metric('End Date', bk.dates[0].strftime('%m/%d/%Y'))
 
-        st.subheader('Drawdown')
-        st.metric('Max Drawdown', get_stat('max_drawdown'))
-        st.metric('Average Drawdown', get_stat('avg_drawdown'))
-        st.metric('Average Drawdown Duration (Days)', get_stat('avg_drawdown_days'))
+        with col2:
+            st.subheader('Risk & Return')
+            st.metric('CAGR', get_stat('cagr'))
+            st.metric('Annualized Volatility', get_stat('yearly_vol'))
+            st.metric('Annualized Sharpe Ratio', get_stat('yearly_sharpe'))
+            st.metric('Annualized Sortino Ratio', get_stat('yearly_sortino'))
+
+        with col3:
+            st.subheader('Drawdown')
+            st.metric('Max Drawdown', get_stat('max_drawdown'))
+            st.metric('Average Drawdown', get_stat('avg_drawdown'))
+            st.metric('Average Drawdown Duration (Days)', get_stat('avg_drawdown_days'))
 
     def backtest_summary(self, bk: bt.Backtest):
         st.header('Backtest<{}>'.format(bk.name))
@@ -128,8 +138,74 @@ class BacktestDescription(Element):
         st.subheader('Data')
         st.dataframe(bk.data.dropna())
 
-    def __call__(self, target: Page, **global_vars):
-        bk_selection = st.selectbox('Select Backtest', target.backtests)
-        bk = target.backtests[bk_selection]
-        self.backtest_summary(bk)
+    def __call__(self, target: BacktestPage, **global_vars):
+        bkt = target.active_backtest
+        self.backtest_summary(bkt)
+
+class SaveBacktests(Element):
+
+    '''Goal: implement buttons to save:
+        1. all backtest data to hdf
+        2. save backtest prices as dataset'''
+
+    def __init__(self, backtest_key: str=None, name=None) -> None:
+        super().__init__(name, False)
+        self.key = backtest_key
+
+    def save_backtests_to_hdf(self, bkts: List[bt.Backtest], fpath: str):
+        for bkt in bkts:
+            bkt.strategy.prices.to_hdf('{}/prices'.format(bkt.name), fpath)
+            bkt.stats.to_hdf('{}/stats'.format(bkt.name), fpath)
+            bkt.weights.to_hdf('{}/weights'.format(bkt.name), fpath)
+            bkt.security_weights.to_hdf('{}/security_weights'.format(bkt.name), fpath)
+            bkt.positions.to_hdf('{}/positions'.format(bkt.name), fpath)
+            bkt.herfindahl_index.to_hdf('{}/herfindahl_index'.format(bkt.name), fpath)
+            bkt.strategy.get_transactions().to_hdf('{}/transactions'.format(bkt.name), fpath)
+        st.success('Saved {}!'.format(fpath))
+
+    def save_backtest_prices(self, target: BacktestPage, bkts: List[bt.Backtest], name: str):
+        prc = bt.backtest.Result(*bkts).prices
+        prc.name = name
+        target.datasets.append(prc)
+
+
+    def select_backtest(self, target):
+        if self.key in target.data:
+            val = target.data[self.key]
+            if isinstance(val, bt.Backtest):
+                return [val]
+        
+        bkts = st.multiselect('Select Backtests')
+        return [target.backtests[b] for b in bkts]
+
+    def __call__(self, target: BacktestPage, **global_vars) -> bool:
+        date_str = dt.datetime.now().strftime('backtests_%Y_%m_%d_%I_%M')
+        fpath = st.text_input('Name this file') or date_str
+        bkts = self.select_backtest(target)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.button(
+                "Save Backtests as HDF5 file ('h5')",
+                on_click=self.save_backtests_to_hdf,
+                kwargs={'bkts': bkts, 'fpath': fpath},
+            )
+
+        with col2:
+            st.button(
+                'Save Backtest Prices as Dataset',
+                on_click=self.save_backtest_prices,
+                kwargs={'target': target, 'bkts': bkts, 'name': fpath.split('.')[0]}
+            )
+
+        return True
+
+class BacktestPricesAndStats(Element):
+
+    def __call__(self, target: Node, **global_vars) -> Any:
+        return super().__call__(target, **global_vars)
+
+
+        
 
