@@ -1,6 +1,4 @@
-import unittest
-from xml.etree import ElementInclude
-from core import State, Page, Element, DefaultStartPage
+from core import Session, Page, Element, DefaultStartPage
 import streamlit as st
 import numpy as np
 from treelib import Tree
@@ -32,21 +30,21 @@ class TestCase:
                 f = getattr(self, f_name)
                 f()
 
-class TestState(TestCase):
+class TestSession(TestCase):
 
-    name = 'TestState'
+    name = 'TestSession'
 
     def __init__(self) -> None:
         pass
     
     def test_init(self):
-        new_state = State(self.name)
-        assertTrue('Initialize State', self.name in st.session_state)
-        assertEqual('Active page is None', 'root', new_state._active_page)
-        assertTrue('No global variables present', not new_state._globals)
+        new_Session = Session(self.name)
+        assertTrue('Initialize Session', self.name in st.session_state)
+        assertEqual('Active page is None', 'root', new_Session._active_page)
+        assertTrue('No global variables present', not new_Session._globals)
 
     def test_update_active_page(self):
-        obj = State(self.name)
+        obj = Session(self.name)
         new_page = Page('new_page', 'new_page')
         other_page = Page('other_page', 'other_page')
         obj.add_node(new_page)
@@ -77,15 +75,15 @@ class TestPage(TestCase):
     def test_run(self):
         obj = Page(self.page1, self.page1, data={'num_continents': 7})
         parent = Page(self.page2, self.page2, {'num_oceans': 4, 'num_continents': 2})
-        state_obj = State('NewState')
-        state_obj.update_globals(True, **{'pi': 3.14, 'num_oceans': 3})
-        obj.run(parent, state_obj)
+        Session_obj = Session('NewSession')
+        Session_obj.update_globals(True, **{'pi': 3.14, 'num_oceans': 3})
+        obj.run(parent, Session_obj)
         assertTrue('Correct Variable Value #1', obj['num_continents']==7)
         assertTrue('Correct Variable Value #2', obj['num_oceans']==parent['num_oceans'])
         assertTrue('Correct Variable Value #3', obj['num_continents']!=parent['num_continents'])
-        assertTrue('Correct Variable Value #3', obj['pi']==state_obj.globals['pi'])
-        st.write(state_obj.globals['pi'])
-        st.write(obj._state.globals['pi'])
+        assertTrue('Correct Variable Value #3', obj['pi']==Session_obj.globals['pi'])
+        st.write(Session_obj.globals['pi'])
+        st.write(obj._Session.globals['pi'])
 
     def test_run_with_elements(self):
         class SampleElement(Element):
@@ -122,10 +120,10 @@ class TestPage(TestCase):
             def __call__(self, target: Page):
                 target.update_globals(favorite_cat='Thor')
         
-        mystate = State('NewState')
+        mySession = Session('NewSession')
         obj = Page(self.page1, self.page1, elements=[SampleElement()])
         obj.run(state=mystate)
-        assertTrue('Correct global data (access by State)', mystate.globals['favorite_cat']=='Thor')
+        assertTrue('Correct global data (access by Session)', mySession.globals['favorite_cat']=='Thor')
         assertTrue('Correct global data (access by Page)', obj['favorite_cat']=='Thor')
         
 
@@ -136,8 +134,8 @@ class TestPage(TestCase):
 if __name__=='__main__':
     st.session_state.clear()
     st.header('Stream Library Tests')
-    test_state = TestState()
-    test_state.run_tests()
+    test_Session = TestSession()
+    test_Session.run_tests()
     test_page = TestPage()
     test_page.run_tests()
 
