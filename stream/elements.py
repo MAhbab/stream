@@ -1,18 +1,10 @@
 #%%
 from core import Element
 from pandas import DataFrame
-from bokeh.models import ColumnDataSource
 
-import streamlit as st
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 import bokeh.plotting as bkp
 import bokeh.models as bkm
-import bokeh.palettes as bpl
-
-import numpy as np
-
+import bokeh.palettes
 
 class BokehPlot(Element):
 
@@ -29,18 +21,18 @@ class BokehPlot(Element):
         self._data = data
         self.height = height
         self.width = width
-        self.color_func = getattr(bpl, color)
+        self.color_func = getattr(bokeh.palettes, color)
         self.ttips = ttips
 
     @property
     def data(self):
         d = self._data.copy()
         d.columns = d.columns.astype(str)
-        return ColumnDataSource(d)
+        return bkm.ColumnDataSource(d)
 
     def default_figure(self, datetime_x=False, ttips=None):
         fig_kwargs = {
-            'height': self.height+10*int(np.random.randn()**2),
+            'height': self.height,
             'width': self.width,
             'toolbar_location': 'below',
             'sizing_mode': 'stretch_both'
@@ -91,25 +83,3 @@ class BokehPlot(Element):
 
     def hist(self, y, fig=None):
         pass
-
-
-
-
-from bokeh.plotting import output_file, show
-import datetime as dt
-
-df = pd.DataFrame(np.random.randn(20,5), index=pd.date_range(dt.datetime(2000,1,1), periods=20, freq='d'))
-# df.columns = df.columns.astype(str)
-# cds = ColumnDataSource(df)
-# cds.data.keys()
-
-# output_file('test.html')
-myel = BokehPlot(df)
-fig = myel.line('index', '0', time_series=True)
-import streamlit as st
-
-st.write('before chart')
-col1, col2 = st.columns((2,1))
-col1.bokeh_chart(fig)
-col2.bokeh_chart(myel.line('index', '1', time_series=True))
-st.write('after chart')
