@@ -7,6 +7,7 @@ setup(
     install_requires=[
         'streamlit>=1.7.0',
         'bokeh>=2.4.1',
-        'treelib>=1.6.1'
+        'treelib>=1.6.1',
+        'bt>=0.2.9'
     ]
 )

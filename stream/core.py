@@ -1,8 +1,7 @@
-from io import open_code
 import streamlit as st
 from typing import Any, Dict, List, Hashable, Union
 from treelib import Tree, Node
-from pandas import Series, DataFrame
+from pandas import DataFrame
 from bt import Strategy, Backtest
 
 class Element:
@@ -20,49 +19,10 @@ class Element:
 
 class Page(Node):
 
-    def __init__(
-        self, 
-        name=None, 
-        identifier=None, 
-        data=None, 
-        elements=None, 
-        show_header=False, 
-        show_footer=False
-    ):
-        self._elements = elements if elements is not None else []
-        self._show_header = show_header
-        self._show_footer = show_footer
-        super().__init__(name or self.__class__.__name__, identifier, None, data or {})
+    def setup(self):
+        self.globals = {}
 
-    @property
-    def elements(self) -> List[Element]:
-        return self._elements
-
-    def __call__(self, parent: Node, **global_vars):
-
-        if self._show_header:
-            data = dict(self.data, **global_vars)
-            self.header(**data)
-
-        data = dict(self.data, **global_vars)
-
-        for e in self.elements:
-
-            val = e(target=self, **data)
-
-            if e._pass_to_parent:
-                parent.data[e.name] = val
-            else:
-                self.data[e.name] = val
-
-        if self._show_footer:
-            data = dict(self.data, **global_vars)
-            self.footer(**data)
-
-    def header(self, **kwargs):
-        raise NotImplementedError
-
-    def footer(self, **kwargs):
+    def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
 class BacktestPage(Page):
@@ -171,8 +131,6 @@ class BacktestPage(Page):
         if self._active_backtest_key is not None:
             st.sidebar.button('Save Backtest Components', on_click=self._save_backtest_components)
 
-        
-        
         return super().__call__(parent, **global_vars)
 
 class DefaultStartPage(Page):
@@ -194,28 +152,7 @@ class Session(Tree):
         self._globals = global_vars
         self._next_page_key = '{}_next_page'.format(self._name)
         self._debug_mode = debug_mode
-
-        if self._name in st.session_state:
-            tree = st.session_state[self._name]['locals']
-            super().__init__(tree, True, Page, self._name)
-
-            self._active_page_id = st.session_state[self._name]['active_page']
-            self._is_first_run = st.session_state[self._name]['is_first_run']
-
-        else:
-            super().__init__(node_class=Page, identifier=self._name)
-            self.setup()
-            st.session_state[self._name] = {}
-            start_page = start_page if isinstance(start_page, Page) else DefaultStartPage()
-            self.add_node(start_page)
-            self._active_page_id = self.root
-            self._is_first_run = True
-            self.update(start_page.identifier)
-
-    #NOTE: necessary evil due to streamlit's widget key functionality
-    def _radio_update_page(self):
-        _, id = st.session_state[self._next_page_key]
-        self.update(id)
+        self._start_page = start_page
 
     @property
     def active_page(self) -> Node:
@@ -225,24 +162,34 @@ class Session(Tree):
             raise Exception('No active page was set')
 
     @property
-    def adjacent_pages(self):
-        return st.session_state[self._name]['adjacent_pages']
+    def page_options(self):
+        return st.session_state[self._name]['page_options']
 
     @property
     def globals(self):
         return self._globals
 
-    @property
-    def is_first_run(self):
-        return self._is_first_run
-
-    def setup(self):
-        pass
-
     def add_node(self, node, parent=None):
         if (parent is None) and (self.root is not None):
             parent = self.root
         return super().add_node(node, parent)
+
+    def setup(self):
+        start_page = self._start_page
+
+        if self._name in st.session_state:
+            tree = st.session_state[self._name]['locals']
+            super().__init__(tree, True, Page, self._name)
+
+            self._active_page_id = st.session_state[self._name]['active_page']
+
+        else:
+            super().__init__(node_class=Page, identifier=self._name)
+            st.session_state[self._name] = {}
+            start_page = start_page if isinstance(start_page, Page) else DefaultStartPage()
+            self.add_node(start_page)
+            self._active_page_id = self.root
+            self.update(start_page.identifier)
 
     def update(self, page_id=None):
 
@@ -251,32 +198,33 @@ class Session(Tree):
 
         st.session_state[self._name]['locals'] = Tree(self, True, Page, self._name)
         st.session_state[self._name]['active_page'] = self._active_page_id
-        st.session_state[self._name]['is_first_run'] = self._is_first_run
 
-        adjacent_pages = self.children(self._active_page_id)
-        if not adjacent_pages: #if active page is a leaf, display siblings instead of children
-            adjacent_pages = self.siblings(self._active_page_id)
+        page_options = self.children(self._active_page_id)
+        if not page_options: #if active page is a leaf, display siblings instead of children
+            page_options = self.siblings(self._active_page_id)
         parent = self.parent(self._active_page_id)
 
         if parent is not None:
-            adjacent_pages.append(parent)
+            page_options.append(parent)
 
             if parent.identifier != self.root:
-                adjacent_pages.append(self.get_node(self.root))
+                page_options.append(self.get_node(self.root))
 
-        adjacent_pages.insert(0, self.active_page)
+        page_options.insert(0, self.active_page)
 
-        st.session_state[self._name]['adjacent_pages'] = adjacent_pages
+        st.session_state[self._name]['page_options'] = page_options
 
+    def run(self):
 
-    def reset(self):
-        for node in self.all_nodes_itr():
-            node.data.clear()
-        self._is_first_run = True
-        self.update(self.root)
+        self.sidebar()
+        active_page = self.active_page
+        active_page.setup()
+        active_page(**self.globals)
+        
+        self.cleanup(active_page)
 
     def sidebar(self):
-        selections = self.adjacent_pages
+        selections = self.displayed_pages
         selection_ids = [(x.tag, x.identifier) for x in selections]
 
         st.sidebar.radio(
@@ -289,54 +237,20 @@ class Session(Tree):
 
         st.sidebar.button('Re-initialize', on_click=self.reset)
 
-    def debugger(self, page: Page, **global_vars):
-        with st.expander('Local Variables'):
-            for key in page.data:
-                val = page.data[key]
-                if isinstance(val, (DataFrame, Series)):
-                    st.dataframe(val)
-                else:
-                    st.write(val)
+    #NOTE: necessary evil due to streamlit's widget key functionality
+    def _radio_update_page(self):
+        _, id = st.session_state[self._next_page_key]
+        self.update(id)
 
-        with st.expander('Global Variables'):
-            for key in global_vars:
-                val = global_vars[key]
-                st.subheader(key)
-                if isinstance(val, (DataFrame, Series)):
-                    st.dataframe(val)
-                else:
-                    st.write(val)
+    def reset(self):
+        for node in self.all_nodes_itr():
+            node.data.clear()
+        self.update(self.root)
 
-        with st.expander('Pages'):
-            st.text('Is first run: {}'.format(self.is_first_run))
-            st.text('Active page')
-            active_page = self.active_page
-            st.write('Tag: {}, Id: {}'.format(active_page.tag, active_page.identifier))
-
-            st.text('Adjacent Pages')
-            st.write(self.adjacent_pages)
-
-            st.text('All pages')
-            st.write(list(self.all_nodes_itr()))
-
-    def cleanup(self, active: Page, parent: Page):
-        if parent is not None:
-            self.update_node(parent.identifier, data=parent.data)
+    def cleanup(self, active: Page):
+        self.globals = dict(self.globals, **active.globals)
         self.update_node(active.identifier, data=active.data)
         self.update(active.identifier)
-
-    def run(self):
-
-        if self._debug_mode:
-            self.debugger(self.active_page)
-
-
-        self.sidebar()
-        new_active_page = self.active_page
-        parent = self.parent(new_active_page.identifier)
-        new_active_page(parent, **self.globals)
-
-        self.cleanup(new_active_page, parent)
 
 
 
