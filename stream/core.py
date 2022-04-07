@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Hashable, Union
 from treelib import Tree, Node
 from pandas import DataFrame
 from bt import Strategy, Backtest
+from numpy.random import randn
 
 class Element:
 
@@ -21,6 +22,13 @@ class Page(Node):
 
     def setup(self):
         self.globals = {}
+
+    def generate_random_key(self):
+        return round(abs(10*randn()), 3)
+
+    def save_obj_from_widget_key(self, key):
+        val = st.session_state[key]
+
 
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
@@ -155,14 +163,14 @@ class Session(Tree):
         self._start_page = start_page
 
     @property
-    def active_page(self) -> Node:
+    def active_page(self) -> Page:
         if self._active_page_id is not None:
             return self.get_node(self._active_page_id)
         else:
             raise Exception('No active page was set')
 
     @property
-    def page_options(self):
+    def page_options(self) -> List[Page]:
         return st.session_state[self._name]['page_options']
 
     @property
@@ -224,7 +232,7 @@ class Session(Tree):
         self.cleanup(active_page)
 
     def sidebar(self):
-        selections = self.displayed_pages
+        selections = self.page_options
         selection_ids = [(x.tag, x.identifier) for x in selections]
 
         st.sidebar.radio(
@@ -248,7 +256,7 @@ class Session(Tree):
         self.update(self.root)
 
     def cleanup(self, active: Page):
-        self.globals = dict(self.globals, **active.globals)
+        self._globals = dict(self.globals, **active.globals)
         self.update_node(active.identifier, data=active.data)
         self.update(active.identifier)
 

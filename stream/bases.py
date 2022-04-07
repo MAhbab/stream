@@ -7,8 +7,28 @@ from io import BytesIO
 from scipy.stats import probplot
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
+import pypika
+import pyodbc
 
 from .core import Page
+
+SERVER = "tcp:shift-{}.database.windows.net,1433" #TODO: check this follows security standards
+JOINS = [x.name for x in pypika.JoinType]
+MAGNA_SITE_ID = 'F88A472C-27B5-4114-B4FE-68B4D98BF60E'
+MAGNA_JOB_TITLE_ID = '631AB19C-ED7A-4372-A612-7C14469A1308'
+
+class DataBase:
+
+    def conn(self, uid, pwd, server='prod', database='Core') -> pyodbc.Connection:
+        conn_str = connect(uid, pwd, server, database)
+        return pyodbc.connect(conn_str)
+
+    def display_query_text(self, q, container=None):
+        container.text(str(q))
+
+    def query_from_text(self, container=None):
+        query_text = container.text_area('Input query here')
+        return query_text
 
 class PandasPage(Page):
 
@@ -38,12 +58,12 @@ class PandasPage(Page):
 
     def select(self, container) -> Union[pd.DataFrame, pd.Series]:
 
-        key = container.selectbox('Select Dataset', self.datasets.keys())
+        key = container.selectbox('Select Dataset', self.datasets.keys(), key='pandas_selectbox_{}'.format(self.identifier))
         return self.datasets[key]
 
     def multi_select(self, container) -> Dict[str, pd.DataFrame]:
         
-        keys = container.multiselect('Select Datasets', self.datasets.keys())
+        keys = container.multiselect('Select Datasets', self.datasets.keys(), key='pandas_multi_select'.format(self.identifier))
         return {k: self.datasets[k] for k in keys}
 
     def from_clipboard(self, container, name=None):
@@ -54,19 +74,22 @@ class PandasPage(Page):
         container.button(
             label='Upload from Clipboard',
             on_click=self.datasets.update,
-            kwargs={name: pd.read_clipboard()}
+            kwargs={name: pd.read_clipboard()},
+            key='pandas_from_clipboard_{}_{}'.format(self.identifier, self.generate_random_key())
         )
 
     def to_clipboard(self, df: Union[pd.DataFrame, pd.Series], container):
         container.button(
             label='Copy to Clipboard',
-            on_click=df.to_clipboard
+            on_click=df.to_clipboard,
+            key='pandas_to_clipboard_{}_{}'.format(self.identifier, self.generate_random_key())
         )
 
     def from_excel(self, container, sheet_name=None):
         file = container.file_uploader(
             label='Upload Excel File',
-            type=['xlsx']
+            type=['xlsx'],
+            key='pandas_from_excel_{}_{}'.format(self.identifier, self.generate_random_key())
         )
         if file is not None:
             if sheet_name is None:
@@ -188,7 +211,6 @@ class OLSPage(RegressionPage):
         else:
             container.pyplot(fig)
 
-
     def summary(self, result_name, container):
         res = self.results[result_name]
 
@@ -196,7 +218,10 @@ class OLSPage(RegressionPage):
 
     
 
-    
+def connect(uid, pwd, server, database='Core'):
+    driver = "{ODBC Driver 17 for SQL Server}"
+    conn_str = 'DRIVER={};SERVER={};DATABASE={};UID={};PWD={}'.format(driver, SERVER.format(server), database, uid, pwd)
+    return conn_str
 
     
 
