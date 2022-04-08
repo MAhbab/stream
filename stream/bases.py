@@ -1,4 +1,3 @@
-from unittest import result
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -9,6 +8,7 @@ import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import pypika
 import pyodbc
+import bt
 
 from .core import Page
 
@@ -30,7 +30,7 @@ class DataBase:
         query_text = container.text_area('Input query here')
         return query_text
 
-class PandasPage(Page):
+class Pandas(Page):
 
     DEFAULT_NAME_COUNTER = 1
 
@@ -56,52 +56,43 @@ class PandasPage(Page):
         df_description = df.describe()
         self.view(df_description, container)
 
-    def select(self, container) -> Union[pd.DataFrame, pd.Series]:
+    def select(self, container, key=None, label='Select Dataset') -> Union[pd.DataFrame, pd.Series]:
 
-        key = container.selectbox('Select Dataset', self.datasets.keys(), key='pandas_selectbox_{}'.format(self.identifier))
-        return self.datasets[key]
+        name = container.selectbox(label, self.datasets.keys(), key=key)
+        return self.datasets[name]
 
-    def multi_select(self, container) -> Dict[str, pd.DataFrame]:
+    def multi_select(self, container, label='Select Datasets', key=None) -> Dict[str, pd.DataFrame]:
         
-        keys = container.multiselect('Select Datasets', self.datasets.keys(), key='pandas_multi_select'.format(self.identifier))
+        keys = container.multiselect(label, self.datasets.keys(), label)
         return {k: self.datasets[k] for k in keys}
 
-    def from_clipboard(self, container, name=None):
+    def from_clipboard(self, container, name=None, label='Upload from Clipboard', key=None):
         if name is None:
             name = 'Dataset{}'.format(self.DEFAULT_NAME_COUNTER)
             self.DEFAULT_NAME_COUNTER += 1
         
-        container.button(
-            label='Upload from Clipboard',
+        return container.button(
+            label=label,
             on_click=self.datasets.update,
             kwargs={name: pd.read_clipboard()},
-            key='pandas_from_clipboard_{}_{}'.format(self.identifier, self.generate_random_key())
+            key=key
         )
 
-    def to_clipboard(self, df: Union[pd.DataFrame, pd.Series], container):
-        container.button(
+    def to_clipboard(self, df: Union[pd.DataFrame, pd.Series], container, label='Copy to Clipboard', key=None):
+        return container.button(
             label='Copy to Clipboard',
             on_click=df.to_clipboard,
-            key='pandas_to_clipboard_{}_{}'.format(self.identifier, self.generate_random_key())
+            key=key
         )
 
-    def from_excel(self, container, sheet_name=None):
-        file = container.file_uploader(
-            label='Upload Excel File',
+    def from_excel(self, container, label='Upload Excel', key=None):
+        return container.file_uploader(
+            label=label,
             type=['xlsx'],
-            key='pandas_from_excel_{}_{}'.format(self.identifier, self.generate_random_key())
+            key=key
         )
-        if file is not None:
-            if sheet_name is None:
-                name = 'Dataset{}'.format(self.DEFAULT_NAME_COUNTER)
-                self.DEFAULT_NAME_COUNTER += 1
-            else:
-                name = sheet_name
 
-            df = pd.read_excel(file, sheet_name)
-            self.datasets[name] = df
-
-    def to_excel(self, df: Union[pd.DataFrame, pd.Series], container, filename=None):
+    def to_excel(self, df: Union[pd.DataFrame, pd.Series], container, filename=None, label='Download Excel', key=None):
         if filename is None:
             filename = 'mydata.xlsx'
 
@@ -111,10 +102,10 @@ class PandasPage(Page):
         writer.save()
         data = output.getvalue()
         
-        container.download_button('Download as Excel', data, filename)
+        return st.download_button(label, data, filename, key=key)
 
 
-class RegressionPage(Page):
+class StatsModels(Page):
 
     '''
     Implements front end elements for OLS and Logit models
@@ -135,7 +126,46 @@ class RegressionPage(Page):
         return endog, exog
 
 
-class OLSPage(RegressionPage):
+class Bt(Page):
+
+    @property
+    def backtests(self):
+        if 'backtests' not in self.data:
+            self.data['backtests'] = {}
+        return self.data['backtests']
+
+    @property
+    def strats(self):
+        if 'strategies' not in self.data:
+            self.data['strategies'] = {}
+        return self.data['strategies']
+
+    @property
+    def algostacks(self):
+        if 'algo_stacks' not in self.data:
+            self.data['algo_stacks'] = {}
+        return self.data
+
+    def run(self, *bkts):
+        for b in bkts:
+            b.run()
+            self.backtests[b.name] = b
+
+    def select_backtest(self, container, label='Select Backtest', key=None):
+        pass
+
+    def multi_select_backtest(self, container, label='Select Backtests', key=None):
+        pass
+
+    def select_strategy(self, container, label='Select Strategy', key=None):
+        pass
+
+    def multi_select_strategy(self, container, label='Select Strategies', key=None):
+        pass
+
+
+
+class OLSPage(StatsModels):
 
     #TODO: refactor plotting code to another base page or a plotting element
 

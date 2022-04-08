@@ -21,7 +21,9 @@ class Element:
 class Page(Node):
 
     def setup(self):
-        self.globals = {}
+        self.temp = {}
+        if self.data is None:
+            self.data = {}
 
     def generate_random_key(self):
         return round(abs(10*randn()), 3)
@@ -256,7 +258,7 @@ class Session(Tree):
         self.update(self.root)
 
     def cleanup(self, active: Page):
-        self._globals = dict(self.globals, **active.globals)
+        self._globals = dict(self.globals, **active.temp)
         self.update_node(active.identifier, data=active.data)
         self.update(active.identifier)
 
