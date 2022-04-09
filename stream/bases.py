@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-from typing import Dict, Union
+from typing import Dict, Union, List
 from io import BytesIO
 from scipy.stats import probplot
 import statsmodels.api as sm
@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import pypika
 import pyodbc
 import bt
+from bt import Backtest, Strategy, AlgoStack
 
 from .core import Page
 
@@ -80,7 +81,7 @@ class Pandas(Page):
 
     def to_clipboard(self, df: Union[pd.DataFrame, pd.Series], container, label='Copy to Clipboard', key=None):
         return container.button(
-            label='Copy to Clipboard',
+            label=label,
             on_click=df.to_clipboard,
             key=key
         )
@@ -92,17 +93,18 @@ class Pandas(Page):
             key=key
         )
 
-    def to_excel(self, df: Union[pd.DataFrame, pd.Series], container, filename=None, label='Download Excel', key=None):
+    def to_excel(self, df: Union[pd.DataFrame, pd.Series], container, writer=None, filename=None, sheet_name='Sheet1', label='Download Excel', key=None):
         if filename is None:
             filename = 'mydata.xlsx'
 
-        output = BytesIO()
-        writer = pd.ExcelWriter(output, 'xlsxwriter')
-        df.to_excel(writer, 'Sheet1')
+        if writer is None:
+            output = BytesIO()
+            writer = pd.ExcelWriter(output, 'xlsxwriter')
+        df.to_excel(writer, sheet_name)
         writer.save()
         data = output.getvalue()
         
-        return st.download_button(label, data, filename, key=key)
+        return container.download_button(label, data, filename, key=key)
 
 
 class StatsModels(Page):
@@ -129,19 +131,19 @@ class StatsModels(Page):
 class Bt(Page):
 
     @property
-    def backtests(self):
+    def backtests(self) -> Dict[str, Backtest]:
         if 'backtests' not in self.data:
             self.data['backtests'] = {}
         return self.data['backtests']
 
     @property
-    def strats(self):
+    def strats(self) -> Dict[str, Strategy]:
         if 'strategies' not in self.data:
             self.data['strategies'] = {}
         return self.data['strategies']
 
     @property
-    def algostacks(self):
+    def algostacks(self) -> Dict[str, AlgoStack]:
         if 'algo_stacks' not in self.data:
             self.data['algo_stacks'] = {}
         return self.data
@@ -151,18 +153,41 @@ class Bt(Page):
             b.run()
             self.backtests[b.name] = b
 
-    def select_backtest(self, container, label='Select Backtest', key=None):
-        pass
+    def select_backtest(self, container, label='Select Backtest', key=None) -> Backtest:
+        name = container.selectbox(
+            label=label,
+            options=self.backtests.keys(),
+            key=key
+        )
 
-    def multi_select_backtest(self, container, label='Select Backtests', key=None):
-        pass
+        return self.backtests[name]
 
-    def select_strategy(self, container, label='Select Strategy', key=None):
-        pass
+    def multi_select_backtest(self, container, label='Select Backtests', key=None) -> List[Backtest]:
+        names = container.multiselect(
+            label=label,
+            options=self.backtests.keys(),
+            key=key
+        )
 
-    def multi_select_strategy(self, container, label='Select Strategies', key=None):
-        pass
+        return [self.backtests[n] for n in names]
 
+    def select_strategy(self, container, label='Select Strategy', key=None) -> Strategy:
+        name = container.selectbox(
+            label=label,
+            options=self.strats.keys(),
+            key=key
+        )
+
+        return self.strats[name]
+
+    def multi_select_strategy(self, container, label='Select Strategies', key=None) -> List[Strategy]:
+        names = container.multiselect(
+            label=label,
+            options=self.strats.keys(),
+            key=key
+        )
+
+        return [self.strats[n] for n in names]
 
 
 class OLSPage(StatsModels):

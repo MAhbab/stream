@@ -1,9 +1,10 @@
 #%%
+from typing import Iterable, Union
 from core import Element
 from pandas import DataFrame
 
 import bokeh.plotting as bkp
-import bokeh.models as bkm
+from bokeh.models import ColumnDataSource, HoverTool
 import bokeh.palettes
 
 class BokehPlot(Element):
@@ -25,10 +26,10 @@ class BokehPlot(Element):
         self.ttips = ttips
 
     @property
-    def data(self):
+    def data(self) -> ColumnDataSource:
         d = self._data.copy()
         d.columns = d.columns.astype(str)
-        return bkm.ColumnDataSource(d)
+        return ColumnDataSource(d)
 
     def default_figure(self, datetime_x=False, ttips=None):
         fig_kwargs = {
@@ -41,7 +42,7 @@ class BokehPlot(Element):
             fig_kwargs['x_axis_type'] = 'datetime'
         fig = bkp.figure(**fig_kwargs)
         if ttips is not None:
-            hover = bkm.HoverTool(tooltips=ttips, mode='vline')
+            hover = HoverTool(tooltips=ttips, mode='vline')
             fig.add_tools(hover)
         
         return fig
@@ -61,13 +62,13 @@ class BokehPlot(Element):
             figure.title.text_font_size = '16pt'
         return figure
 
-    def line(self, x, y, fig=None, time_series=False):
+    def line(self, x: str, y: Union[str, Iterable[str]], fig=None, time_series=False):
         if fig is None:
             fig = self.default_figure(time_series, ttips=self.ttips)
 
         if isinstance(y, str):
             y_list = [y]
-        elif isinstance(y, (list, tuple)):
+        elif isinstance(y, (Iterable)):
             y_list = y
 
         src = self.data
@@ -79,7 +80,7 @@ class BokehPlot(Element):
         return fig
 
     def scatter(self, x, y, fig=None):
-        pass
+        return NotImplemented
 
     def hist(self, y, fig=None):
-        pass
+        return NotImplemented
