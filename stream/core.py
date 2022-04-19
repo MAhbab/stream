@@ -25,143 +25,15 @@ class Page(Node):
         if self.data is None:
             self.data = {}
 
-    def generate_random_key(self):
-        return round(abs(10*randn()), 3)
-
-    def save_obj_from_widget_key(self, key):
-        val = st.session_state[key]
-
-
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
-class BacktestPage(Page):
-
-    def __init__(
-        self, 
-        tag: str = None,
-        identifier: Hashable = None,
-        data: dict = None,
-        elements: List[Element] = None,
-        show_header: bool = False,
-        show_footer: bool = False,
-    ):
-        data = data or {}
-        bkt_dict = {'strategies': {}, 'backtests': {}, 'datasets': {}}
-        self._active_backtest_key = None
-        self._active_strategy_key = None
-        self._active_dataset_key = None
-
-        self._update = None
-
-                
-        data = dict(data, **bkt_dict)
-        super().__init__(tag, identifier, data, elements, show_header, show_footer)
-
-    @property
-    def strategies(self) -> Dict[str, Strategy]:
-        return self.data['strategies']
-
-    @property
-    def backtests(self) -> Dict[str, Backtest]:
-        return self.data['backtests']
-
-    @property
-    def datasets(self) -> Dict[str, DataFrame]:
-        return self.data['datasets']
-
-    @property
-    def active_strategy(self) -> Union[Strategy, None]:
-        return self.data['strategies'][self._active_strategy_key]
-
-    @property
-    def active_backtest(self) -> Union[Backtest, None]:
-        return self.data['backtests'][self._active_backtest_key]
-
-    @property
-    def active_dataset(self) -> Union[DataFrame, None]:
-        df = self.data['datasets'][self._active_dataset_key]
-        df.name = self._active_dataset_key
-        return df
-
-    @property
-    def update(self):
-        return self._update
-
-
-    def _data_name(self, dta):
-        try:
-            return dta.name
-        except AttributeError:
-            return dta.__class__.__name__
-
-    def _quick_backtest(self):
-        name = 'Strategy<{}> with Data<{}>'.format(self._active_strategy_key, self._active_dataset_key)
-        bkt = Backtest(self.active_strategy, self.active_dataset.dropna(), name=name)
-        self._run(bkt)
-        self.update()
-
-    def _save_backtest_components(self):
-        df_name = 'Data from Backtest<{}>'.format(self._active_backtest_key)
-        strat = self.active_backtest.strategy
-        self.datasets[df_name] = self.active_backtest.data.dropna()
-        self.strategies[strat.name] = strat
-        self.update()
-        
-
-    def _run(self, *bkts):
-        if not bkts:
-            return
-
-        with st.spinner('Running Backtests...'):
-            prg = 0
-            pbar = st.progress(prg)
-            increment = 1/len(bkts)
-
-            for bk in bkts:
-                bk_name = bk.name
-                st.text('Running {}...'.format(bk))
-                bk.run()
-                st.success('Successfully Ran {}'.format(bk_name))
-
-                prg += increment
-                pbar.progress(prg)
-        
-        st.success('Backtests run successful')
-        self.backtests.update(**{b.name: b for b in bkts})
-
-    def __call__(self, parent: Node, **global_vars):
-        self._active_backtest_key = st.sidebar.selectbox('Select Backtest', self.backtests)
-        self._active_strategy_key = st.sidebar.selectbox('Select Strategy', self.strategies)
-        self._active_dataset_key = st.sidebar.selectbox('Select Dataset', self.datasets)
-
-        if all([x is not None for x in [self._active_strategy_key, self._active_dataset_key]]):
-            st.sidebar.button('Quick Backtest', on_click=self._quick_backtest)
-
-        if self._active_backtest_key is not None:
-            st.sidebar.button('Save Backtest Components', on_click=self._save_backtest_components)
-
-        return super().__call__(parent, **global_vars)
-
-class DefaultStartPage(Page):
-
-    def __init__(self):
-        super().__init__(tag='Home Page', identifier='root', run_header=True)
-
-    def header(self, **kwargs):
-        st.header('Welcome')
-        st.text('This is the default home page')
-        st.text('Use the panel on the left to navigate pages')
-        st.text("In case of issues, press the Re-initialize button in the navigation panel")
-        st.text('If issues persist, contact Mahfuj.')
-
 class Session(Tree):
 
-    def __init__(self, name=None, start_page=None, debug_mode=False, **global_vars) -> None:
+    def __init__(self, name=None, start_page=None, **global_vars) -> None:
         self._name = name or self.__class__.__name__
         self._globals = global_vars
         self._next_page_key = '{}_next_page'.format(self._name)
-        self._debug_mode = debug_mode
         self._start_page = start_page
 
     @property
