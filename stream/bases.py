@@ -277,7 +277,7 @@ class OLSPage(StatsModels):
 
 def connect(uid, pwd, server, database='Core'):
     driver = "{ODBC Driver 17 for SQL Server}"
-    conn_str = 'DRIVER={};SERVER={};DATABASE={};UID={};PWD={}'.format(driver, SERVER.format(server), database, uid, pwd)
+    conn_str = 'DRIVER={};SERVER={};DATABASE={};UID={};PWD={}'.format(driver, server, database, uid, pwd)
     return conn_str
 
     
