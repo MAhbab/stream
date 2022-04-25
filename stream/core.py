@@ -25,15 +25,24 @@ class Page(Node):
         if self.data is None:
             self.data = {}
 
+    def generate_random_key(self):
+        return round(abs(10*randn()), 3)
+
+    def save_obj_from_widget_key(self, key):
+        val = st.session_state[key]
+
+
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
+
 class Session(Tree):
 
-    def __init__(self, name=None, start_page=None, **global_vars) -> None:
+    def __init__(self, name=None, start_page=None, debug_mode=False, **global_vars) -> None:
         self._name = name or self.__class__.__name__
         self._globals = global_vars
         self._next_page_key = '{}_next_page'.format(self._name)
+        self._debug_mode = debug_mode
         self._start_page = start_page
 
     @property
@@ -68,7 +77,7 @@ class Session(Tree):
         else:
             super().__init__(node_class=Page, identifier=self._name)
             st.session_state[self._name] = {}
-            start_page = start_page if isinstance(start_page, Page) else DefaultStartPage()
+            start_page = start_page if isinstance(start_page, Page) else lambda : st.header('Welcome')
             self.add_node(start_page)
             self._active_page_id = self.root
             self.update(start_page.identifier)

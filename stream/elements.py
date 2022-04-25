@@ -1,24 +1,22 @@
 #%%
 from typing import Iterable, Union
-from core import Element
+from .core import Element
 from pandas import DataFrame
 
 import bokeh.plotting as bkp
 from bokeh.models import ColumnDataSource, HoverTool
 import bokeh.palettes
 
-class BokehPlot(Element):
+class BokehPlot:
 
     def __init__(
         self,
         data: DataFrame,
-        name=None, 
         height=400,
         width=600,
         color='viridis',
         ttips=None
     ) -> None:
-        super().__init__(name, False)
         self._data = data
         self.height = height
         self.width = width
@@ -62,7 +60,7 @@ class BokehPlot(Element):
             figure.title.text_font_size = '16pt'
         return figure
 
-    def line(self, x: str, y: Union[str, Iterable[str]], fig=None, time_series=False):
+    def line(self, x: str='index', y: Union[str, Iterable[str]]=None, fig=None, time_series=False):
         if fig is None:
             fig = self.default_figure(time_series, ttips=self.ttips)
 
@@ -70,6 +68,8 @@ class BokehPlot(Element):
             y_list = [y]
         elif isinstance(y, (Iterable)):
             y_list = y
+        elif y is None:
+            y_list = list(self._data.columns)
 
         src = self.data
         colors = self.color_func(len(y_list))

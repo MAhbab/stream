@@ -67,17 +67,18 @@ class Pandas(Page):
         keys = container.multiselect(label, self.datasets.keys(), label)
         return {k: self.datasets[k] for k in keys}
 
-    def from_clipboard(self, container, name=None, label='Upload from Clipboard', key=None):
+    def from_clipboard(self, button, container, name=None, label='Upload from Clipboard', key=None):
         if name is None:
             name = 'Dataset{}'.format(self.DEFAULT_NAME_COUNTER)
             self.DEFAULT_NAME_COUNTER += 1
         
-        return container.button(
+        button =  container.button(
             label=label,
-            on_click=self.datasets.update,
-            kwargs={name: pd.read_clipboard()},
             key=key
         )
+
+        if button:
+            return pd.read_clipboard()
 
     def to_clipboard(self, df: Union[pd.DataFrame, pd.Series], container, label='Copy to Clipboard', key=None):
         return container.button(
@@ -144,11 +145,12 @@ class Bt(Page):
 
     @property
     def algostacks(self) -> Dict[str, AlgoStack]:
-        if 'algo_stacks' not in self.data:
-            self.data['algo_stacks'] = {}
+        if 'algostacks' not in self.data:
+            self.data['algostacks'] = {}
         return self.data
 
-    def run(self, *bkts):
+    def run_backtest(self, *bkts):
+        '''Run backtests and save in :dict: self.backtests'''
         for b in bkts:
             b.run()
             self.backtests[b.name] = b
