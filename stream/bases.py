@@ -5,11 +5,13 @@ from typing import Dict, Union, List
 from io import BytesIO
 from scipy.stats import probplot, zscore
 import statsmodels.api as sm
+from statsmodels.regression.linear_model import RegressionResults
 import matplotlib.pyplot as plt
 import pypika
 import pyodbc
 import bt
 from bt import Backtest, Strategy, AlgoStack
+from bokeh.plotting import ColumnDataSource
 
 from .core import Page
 
@@ -107,7 +109,6 @@ class Pandas(Page):
         
         return container.download_button(label, data, filename, key=key)
 
-
 class StatsModels(Page):
 
     '''
@@ -115,7 +116,7 @@ class StatsModels(Page):
     '''
 
     @property
-    def results(self):
+    def results(self) -> Dict[str, RegressionResults]:
         if 'regression_results' not in self.data:
             self.data['regression_results'] = {}
         return self.data['regression_results']
@@ -274,7 +275,30 @@ class OLSPage(StatsModels):
 
         container.write(res.summary2())
 
-    
+    def summary_to_dataframes(self, result_name) -> List[pd.DataFrame]:
+        result = self.results[result_name]
+        summary = result.summary()
+        summary_dfs = []
+
+        for t in summary.tables:
+            t_html = t.as_html()
+            t_df = pd.read_html(t_html, header=0, index_col=0)[0]
+            summary_dfs.append(t_df)
+
+        return summary_dfs
+
+    def result_to_cds(self, result_name) -> ColumnDataSource:
+        result = self.results[result_name]
+
+        residual = pd.Series(result.resid, name='{} Residuals'.format(result_name))
+        fitted = pd.Series(result.fittedvalues, name='{} Fitted Values'.format(result_name))
+        observed = pd.Series(result.model.endog, name='{} Observed Values'.format(result_name))
+        factors = pd.DataFrame(result.model.exog)
+
+        data = pd.concat([factors, observed, fitted, residual], axis=1)
+        cds = ColumnDataSource(data)
+
+        return cds
 
 def connect(uid, pwd, server, database='Core'):
     driver = "{ODBC Driver 17 for SQL Server}"
