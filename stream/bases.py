@@ -3,7 +3,7 @@ import numpy as np
 import streamlit as st
 from typing import Dict, Union, List
 from io import BytesIO
-from scipy.stats import probplot
+from scipy.stats import probplot, zscore
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 import pypika
@@ -121,7 +121,7 @@ class StatsModels(Page):
         return self.data['regression_results']
 
     def fit(self, model, name, **fit_kwargs):
-        self.regresssion_results[name] = model.fit(**fit_kwargs)
+        self.results[name] = model.fit(**fit_kwargs)
 
     def variable_selection_input(self, data: pd.DataFrame, container):
         endog = container.selectbox('Endogenous Variable', data.columns)
@@ -208,7 +208,7 @@ class OLSPage(StatsModels):
         ax.scatter(range(len(resid)), resid)
         ax.set_xlabel('Observation', fontsize=self.MEDIUM_FONT)
         ax.set_ylabel('Residual', fontsize=self.MEDIUM_FONT)
-        ax.set_title('{} Regression Residuals', fontsize=self.LARGE_FONT)
+        ax.set_title('{} Regression Residuals'.format(result_name), fontsize=self.LARGE_FONT)
         
         if container is None:
             plt.show(fig)
@@ -224,7 +224,7 @@ class OLSPage(StatsModels):
         ax.scatter(fitted.values, obs)
         ax.set_xlabel('Fitted', fontsize=self.MEDIUM_FONT)
         ax.set_ylabel('Observed', fontsize=self.MEDIUM_FONT)
-        ax.set_title('{} Observed vs. Fitted Values', fontsize=self.LARGE_FONT)
+        ax.set_title('{} Observed vs. Fitted Values'.format(result_name), fontsize=self.LARGE_FONT)
         
         if container is None:
             plt.show(fig)
@@ -241,7 +241,7 @@ class OLSPage(StatsModels):
         ax.scatter(fitted.values, resid.values)
         ax.set_xlabel('Fitted', fontsize=self.MEDIUM_FONT)
         ax.set_ylabel('Residual', fontsize=self.MEDIUM_FONT)
-        ax.set_title('{} Residuals vs. Fitted Values', fontsize=self.LARGE_FONT)
+        ax.set_title('{} Residuals vs. Fitted Values'.format(result_name), fontsize=self.LARGE_FONT)
 
         if container is None:
             plt.show(fig)
@@ -255,13 +255,14 @@ class OLSPage(StatsModels):
         line = np.linspace(-3,3,100)
 
         osm, osr = probplot(resid, fit=False)
+        z_osr = zscore(osr, ddof=2)
 
         fig, ax = plt.subplots()
-        ax.scatter(osm, osr)
+        ax.scatter(osm, z_osr)
         ax.plot(line, line, c='r')
         ax.set_xlabel('Theoretical Quantile', fontsize=self.MEDIUM_FONT)
         ax.set_ylabel('Residual', fontsize=self.MEDIUM_FONT)
-        ax.set_title('{} Residual Probability Plot', fontsize=self.LARGE_FONT)
+        ax.set_title('{} Residual Probability Plot'.format(result_name), fontsize=self.LARGE_FONT)
 
         if container is None:
             plt.show(fig)
@@ -271,7 +272,7 @@ class OLSPage(StatsModels):
     def summary(self, result_name, container):
         res = self.results[result_name]
 
-        container.write(res.summary())
+        container.write(res.summary2())
 
     
 
